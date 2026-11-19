@@ -1,0 +1,2021 @@
+// --------------------------------------------------------------------------------------------------------------------
+/// \file main.c
+///
+/// \brief Unit test main program.
+///
+/// $Id: main.c 2243326 2022-07-04 13:09:54Z hellwigj $
+///
+/// Copyright (c) 2020, ASK Industries GmbH, Niederwinkling.
+/// All Rights Reserved.
+// --------------------------------------------------------------------------------------------------------------------
+
+// --------------------------------------------------------------------------------------------------------------------
+//	Includes
+// --------------------------------------------------------------------------------------------------------------------
+
+// C standard library includes
+#include <assert.h>
+#include <math.h>
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+// Platform-specific sleep functions
+#ifdef _WIN32
+#include <windows.h>  // Sleep() for Windows
+#else
+#include <unistd.h>	 // usleep() for POSIX (Linux/Unix)
+#endif
+
+// CMocka unit test framework
+#include "cmocka.h"
+
+// R1UP file format reader library, current library under test
+#include "r1up_file.h"
+// R1UP to RaceCapture converter
+#include "r1up_to_racecapture/r1up_to_racecapture.h"
+// ReRace track information library
+#include "rerace_session/rerace_session.h"
+#include "rerace_track/rerace_track.h"
+// String parsing utilities for embedded systems
+#include "ag_string/ag_string.h"
+// Memory management abstraction layer
+#include "ag_mal.h"
+#include "ag_rndu64.h"
+#include "r1up_file_cfg.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+//	Local Definitions
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Portable millisecond delay helper function
+ * @details Uses SleepEx instead of Sleep to avoid conflict with -DSleep=OsekSleep in makefile.
+ *          SleepEx(ms, FALSE) is functionally identical to Sleep(ms).
+ */
+static inline void test_sleep_ms(unsigned int milliseconds) {
+#ifdef _WIN32
+	SleepEx(milliseconds, FALSE);
+#else
+	usleep(milliseconds * 1000);
+#endif
+}
+
+#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
+#pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
+
+/**
+ * @brief Test context structure passed via state parameter
+ * @details Contains timestamp and counter for generating unique filenames
+ */
+typedef struct {
+	time_t timestamp;  ///< Timestamp when test started (seconds since epoch)
+	uint32_t counter;  ///< Sequential counter incremented for each test
+} test_context_t;
+
+/**
+ * @brief Static counter incremented for each test execution
+ */
+static uint32_t test_execution_counter = 0;
+
+/**
+ * @brief Enum for test log levels
+ * @details Defines severity levels for test logging. Lower values = higher priority.
+ */
+typedef enum {
+	TEST_LOG_LEVEL_NONE = 0,	 ///< No logging
+	TEST_LOG_LEVEL_ERROR = 1,	 ///< Critical errors only
+	TEST_LOG_LEVEL_WARNING = 2,	 ///< Warnings and errors
+	TEST_LOG_LEVEL_INFO = 3,	 ///< Informational messages
+	TEST_LOG_LEVEL_DEBUG = 4,	 ///< Debug information
+	TEST_LOG_LEVEL_VERBOSE = 5,	 ///< Very detailed output
+	TEST_LOG_LEVEL_ALL = 255	 ///< Everything (0xFF)
+} test_log_level_t;
+
+/**
+ * @brief Define the current log level for unit tests
+ * @details Controls which messages are printed. Set to one of:
+ * - TEST_LOG_LEVEL_NONE    (0)   - No prints
+ * - TEST_LOG_LEVEL_ERROR   (1)   - Only critical errors
+ * - TEST_LOG_LEVEL_WARNING (2)   - Warnings and errors
+ * - TEST_LOG_LEVEL_INFO    (3)   - Informational messages
+ * - TEST_LOG_LEVEL_DEBUG   (4)   - Debug information
+ * - TEST_LOG_LEVEL_VERBOSE (5)   - Very detailed output
+ * - TEST_LOG_LEVEL_ALL     (255) - Everything
+ */
+#define TEST_LOG_LEVEL TEST_LOG_LEVEL_ALL
+
+/**
+ * @brief Macro-based logging (more efficient - compiler optimizes away unused levels)
+ * @details These macros provide zero runtime overhead when log level is too low.
+ * Use these for performance-critical or frequently called logging.
+ */
+#define TEST_PRINT_ERROR(...)                                                   \
+	do {                                                                        \
+		if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_ERROR) print_message(__VA_ARGS__); \
+	} while (0)
+#define TEST_PRINT_WARNING(...)                                                   \
+	do {                                                                          \
+		if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_WARNING) print_message(__VA_ARGS__); \
+	} while (0)
+#define TEST_PRINT_INFO(...)                                                   \
+	do {                                                                       \
+		if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_INFO) print_message(__VA_ARGS__); \
+	} while (0)
+#define TEST_PRINT_DEBUG(...)                                                   \
+	do {                                                                        \
+		if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_DEBUG) print_message(__VA_ARGS__); \
+	} while (0)
+#define TEST_PRINT_VERBOSE(...)                                                   \
+	do {                                                                          \
+		if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_VERBOSE) print_message(__VA_ARGS__); \
+	} while (0)
+
+/**
+ * @brief Concatenation helpers for building format macros
+ */
+#define FORMAT_CONCAT(a, b) FORMAT_CONCAT_IMPL(a, b)
+#define FORMAT_CONCAT_IMPL(a, b) a##b
+
+/**
+ * @brief Define format specifiers for each type
+ */
+#define FORMAT_uint8_t "%u"
+#define FORMAT_int8_t "%d"
+#define FORMAT_uint16_t "%u"
+#define FORMAT_int16_t "%d"
+#define FORMAT_uint32_t "%u"
+#define FORMAT_int32_t "%d"
+
+/* Format specifiers for ag_fixedpoint types (map to underlying types) */
+#define FORMAT_ag_fixedpoint_uq8_0_t "%u"  /* uint8_t */
+#define FORMAT_ag_fixedpoint_q7_0_t "%d"   /* int8_t */
+#define FORMAT_ag_fixedpoint_uq16_0_t "%u" /* uint16_t */
+#define FORMAT_ag_fixedpoint_q15_0_t "%d"  /* int16_t */
+#define FORMAT_ag_fixedpoint_uq32_0_t "%u" /* uint32_t */
+#define FORMAT_ag_fixedpoint_q31_0_t "%d"  /* int32_t */
+#define FORMAT_ag_fixedpoint_uq12_4_t "%u" /* uint16_t */
+#define FORMAT_ag_fixedpoint_uq10_6_t "%u" /* uint16_t */
+#define FORMAT_ag_fixedpoint_uq6_10_t "%u" /* uint16_t */
+#define FORMAT_ag_fixedpoint_uq4_12_t "%u" /* uint16_t */
+#define FORMAT_ag_fixedpoint_q4_11_t "%d"  /* int16_t */
+#define FORMAT_ag_fixedpoint_q3_12_t "%d"  /* int16_t */
+#define FORMAT_ag_fixedpoint_q3_28_t "%d"  /* int32_t */
+
+/**
+ * @brief Get the printf format specifier for a given type
+ */
+#define FORMAT_FOR_TYPE(type) FORMAT_CONCAT(FORMAT_, type)
+
+/**
+ * @brief Macro to define the number of samples and duration for test variables
+ */
+#define SAMPLES_DURATION (5U * 60U)
+#define NUMBER_OF_SAMPLES (SAMPLES_DURATION * R1UP_FILE_DFLT_SMPL_FRQ)
+
+/**
+ * @brief Macro to define variable structures for test variables
+ */
+#define EXPAND_AS_VARIABLES_DEFINITION(var_id, type_id, type, fd, ...) \
+	struct strct##var_id {                                             \
+		r1up_variable_id_t variable_id;                                \
+		r1up_type_id_t type_identifier;                                \
+		uint32_t frq_div;                                              \
+		ag_fixedpoint_##type##_t data[NUMBER_OF_SAMPLES];              \
+		ag_fixedpoint_float_t data_float[NUMBER_OF_SAMPLES];           \
+	} strct##var_id = {.variable_id = var_id, .type_identifier = type_id, .frq_div = fd};
+
+/**
+ * @brief Helper macro to generate type-specific comparison case statements
+ * @details Used inside VERIFY_VARIABLE_WITH_RAW_FUNCTION to compare each sample of a variable.
+ * Generates a case statement for each type ID that casts the raw data to the appropriate
+ * fixed-point type and compares it with reference data, printing detailed messages on mismatch.
+ * This macro is expanded via R1UP_FILE_TYPE_ID_TABLE to handle all possible data types.
+ *
+ * @param type_id_symbol The enum symbol for the type ID (e.g., R1UP_FILE_TYPE_ID_UQ16_0)
+ * @param type_id_value The numeric value of the type ID (not used, required by table expansion)
+ * @param type_token The token used to identify the type in macros (e.g., uq16_0)
+ *
+ * @note This macro works together with VERIFY_VARIABLE_WITH_RAW_FUNCTION
+ * @see VERIFY_VARIABLE_WITH_RAW_FUNCTION
+ */
+#define EXPAND_AS_CAST_AND_COMPARE(type_id_symbol, type_id_value, type_token, ...)                            \
+	case type_id_symbol: {                                                                                    \
+		const R1UP_FILE_TYPE(type_token)* raw_data = raw.value.as_##type_token;                               \
+		const R1UP_FILE_TYPE(type_token)* ref_data = (const R1UP_FILE_TYPE(type_token)*)ref_buffer;           \
+		if (raw_data[i] != ref_data[i]) {                                                                     \
+			TEST_PRINT_ERROR("    Mismatch at sample %u: read=" FORMAT_FOR_TYPE(R1UP_FILE_TYPE(               \
+								 type_token)) ", expected=" FORMAT_FOR_TYPE(R1UP_FILE_TYPE(type_token)) "\n", \
+							 i, raw_data[i], ref_data[i]);                                                    \
+		}                                                                                                     \
+		assert_int_equal(raw_data[i], ref_data[i]);                                                           \
+	} break;
+
+/**
+ * @brief Main macro to verify a variable by comparing raw file data with reference data
+ * @details This macro performs a complete verification workflow for a single variable:
+ * 1. Queries the file's VSF to get the runtime type ID
+ * 2. Retrieves raw data from the file using r1up_file_get_var_raw()
+ * 3. Gets reference data from test helper function
+ * 4. Compares each sample using type-specific comparison (via EXPAND_AS_CAST_AND_COMPARE)
+ *
+ * The macro is designed to be expanded via R1UP_FILE_VARIABLE_ID_TABLE to verify all variables.
+ * It handles variables that may not be present in the file gracefully.
+ *
+ * @param var_id_symbol The variable ID enum symbol (e.g., R1UP_FILE_VAR_ID_RPM)
+ * @param var_id_value The numeric value of the variable ID (not used, required by table expansion)
+ * @param var_description Description of the variable (not used, required by table expansion)
+ *
+ * @note This macro uses EXPAND_AS_CAST_AND_COMPARE for type-specific comparisons
+ * @see EXPAND_AS_CAST_AND_COMPARE
+ * @see Test_HelperGetVariableByID
+ */
+#define VERIFY_VARIABLE_WITH_RAW_FUNCTION(var_id_symbol, var_id_value, ...)                                   \
+	{                                                                                                         \
+		/* Step 1: Get runtime type ID from file's VSF */                                                     \
+		r1up_type_id_t runtime_type_id;                                                                       \
+		r1up_file_result_t type_res = r1up_file_get_var_type_id(handle, var_id_symbol, &runtime_type_id);     \
+                                                                                                              \
+		if (type_res == R1UP_FILE_SUCCESS) {                                                                  \
+			/* Variable exists in file - get raw data */                                                      \
+			r1up_var_raw_t raw;                                                                               \
+			r1up_file_result_t res = r1up_file_get_var_raw(handle, var_id_symbol, &raw);                      \
+			assert_int_equal(res, R1UP_FILE_SUCCESS);                                                         \
+			assert_int_equal(raw.type_id, runtime_type_id);                                                   \
+                                                                                                              \
+			/* Get reference data */                                                                          \
+			const void* ref_buffer = Test_HelperGetVariableByID(var_id_symbol);                               \
+			TEST_PRINT_VERBOSE("  Verifying variable %s (type_id=%u)...\n", #var_id_symbol, runtime_type_id); \
+                                                                                                              \
+			/* Compare each sample based on type using X-macro generated cases */                             \
+			for (uint32_t i = 0; i < NUMBER_OF_SAMPLES; i++) {                                                \
+				switch (runtime_type_id) {                                                                    \
+					R1UP_FILE_TYPE_ID_TABLE(EXPAND_AS_CAST_AND_COMPARE)                                       \
+					default:                                                                                  \
+						TEST_PRINT_WARNING("    WARNING: Verification for type_id=%u not implemented.\n",     \
+										   runtime_type_id);                                                  \
+						break;                                                                                \
+				}                                                                                             \
+			}                                                                                                 \
+		} else if (type_res == R1UP_FILE_ERROR_NOT_FOUND) {                                                   \
+			/* Variable not in this file - skip */                                                            \
+			TEST_PRINT_WARNING("  Variable %s: not present in file (OK)\n", #var_id_symbol);                  \
+		} else {                                                                                              \
+			/* Unexpected error, assert_int_equal(type_res, R1UP_FILE_SUCCESS) make test fail */              \
+			TEST_PRINT_ERROR("ERROR: Failed to get type for %s: %d\n", #var_id_symbol, type_res);             \
+			assert_int_equal(type_res, R1UP_FILE_SUCCESS);                                                    \
+		}                                                                                                     \
+	}
+
+// --------------------------------------------------------------------------------------------------------------------
+//	Local Variables
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Expandable macro to define test variables based on R1UP_FILE_VARS_STREAM_FORMAT_TABLE, this variables are
+ * used to write data in the file and check correctness when reading the file.
+ */
+R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_VARIABLES_DEFINITION)
+#undef EXPAND_AS_VARIABLES_DEFINITION
+
+// --------------------------------------------------------------------------------------------------------------------
+//	Local Function Prototypes
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_HelperFillVariables(void);
+static void Test_HelperFillVariablesSine(double num_cycles, double phase_step_rad);
+static void* Test_HelperGetVariableByID(r1up_variable_id_t var_id_search);
+static void Test_HelperFileDelete(const char* filename);
+static bool Test_HelperCompareFiles(const char* file1, const char* file2);
+// --------------------------------------------------------------------------------------------------------------------
+//	Global Variables
+// --------------------------------------------------------------------------------------------------------------------
+
+// --------------------------------------------------------------------------------------------------------------------
+//	Helper Functions
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Helper function to fill test variables with random data
+ */
+static void Test_HelperFillVariables(void) {
+#define EXPAND_AS_FILL_VARIABLES(var_id, type_id, type, fd, ...)                              \
+	if (i % strct##var_id.frq_div == 0U) {                                                    \
+		strct##var_id.data[i] = RAND_FOR_TYPE(&rng, ag_fixedpoint_##type##_t);                \
+		strct##var_id.data_float[i] = ag_fixedpoint_##type##_to_float(strct##var_id.data[i]); \
+	} else {                                                                                  \
+		assert(i >= 1);                                                                       \
+		strct##var_id.data[i] = strct##var_id.data[i - 1U];                                   \
+		strct##var_id.data_float[i] = strct##var_id.data_float[i - 1U];                       \
+	}
+
+	rng64_t rng;
+	rng64_seed(&rng, 123456789ULL);
+
+	for (uint32_t i = 0U; i < NUMBER_OF_SAMPLES; i++) {
+		R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_FILL_VARIABLES)
+		// write the variables to the file
+	}
+#undef EXPAND_AS_FILL_VARIABLES
+}
+
+/**
+ * @brief Helper function to fill test variables with sinusoidal data using sin() from math.h
+ *
+ * Generates a sine wave for each variable, scaled to a safe range for its fixed-point type.
+ * Each variable gets a different phase offset so that waveforms are visually distinguishable.
+ * The frq_div (frequency divider) behaviour is preserved: on non-divisible samples, the
+ * previous value is held (sample-and-hold).
+ *
+ * @param num_cycles   Number of complete sine cycles over the total sample duration
+ *                     (e.g. 5.0 means 1 cycle per minute with SAMPLES_DURATION = 5*60)
+ * @param phase_step_rad  Phase offset added per variable (radians), so that each variable
+ *                        has a different phase. 0 means all variables are in phase.
+ */
+static void Test_HelperFillVariablesSine(double num_cycles, double phase_step_rad) {
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+	/* Amplitude and offset per type token -------------------------------------------------*/
+	/* Unsigned types: offset = mid-range, amplitude < offset to stay in [0, max]           */
+	/* Signed   types: offset = 0, amplitude < |max| to stay in [-max, +max]                */
+
+	/* uq16_0  uint16  [0, 65535]            */
+#define SINE_AMP_uq16_0 30000.0
+#define SINE_OFF_uq16_0 32000.0
+	/* uq12_4  uint16  [0, 4095.9375]        */
+#define SINE_AMP_uq12_4 1800.0
+#define SINE_OFF_uq12_4 2000.0
+	/* uq10_6  uint16  [0, 1023.984375]      */
+#define SINE_AMP_uq10_6 450.0
+#define SINE_OFF_uq10_6 500.0
+	/* uq6_10  uint16  [0, 63.999]           */
+#define SINE_AMP_uq6_10 28.0
+#define SINE_OFF_uq6_10 30.0
+	/* uq4_12  uint16  [0, 15.999]           */
+#define SINE_AMP_uq4_12 7.0
+#define SINE_OFF_uq4_12 8.0
+	/* uq8_0   uint8   [0, 255]              */
+#define SINE_AMP_uq8_0 120.0
+#define SINE_OFF_uq8_0 127.0
+	/* uq32_0  uint32  [0, 4294967295]       */
+#define SINE_AMP_uq32_0 2000000000.0
+#define SINE_OFF_uq32_0 2100000000.0
+	/* q4_11   int16   [-16, 15.999]         */
+#define SINE_AMP_q4_11 7.0
+#define SINE_OFF_q4_11 0.0
+	/* q3_12   int16   [-8, 7.999]           */
+#define SINE_AMP_q3_12 3.5
+#define SINE_OFF_q3_12 0.0
+	/* q3_28   int32   [-8, 7.999]           */
+#define SINE_AMP_q3_28 3.5
+#define SINE_OFF_q3_28 0.0
+	/* q15_0   int16   [-32768, 32767]       */
+#define SINE_AMP_q15_0 30000.0
+#define SINE_OFF_q15_0 0.0
+	/* q7_0    int8    [-128, 127]           */
+#define SINE_AMP_q7_0 120.0
+#define SINE_OFF_q7_0 0.0
+	/* q31_0   int32   [-2^31, 2^31 - 1]    */
+#define SINE_AMP_q31_0 2000000000.0
+#define SINE_OFF_q31_0 0.0
+
+	uint32_t var_index = 0U; /* incremented per variable for phase offset */
+
+#define EXPAND_AS_FILL_SINE(var_id, type_id, type, fd, ...)                                                       \
+	if (i % strct##var_id.frq_div == 0U) {                                                                        \
+		double phase =                                                                                            \
+			2.0 * M_PI * num_cycles * (double)i / (double)NUMBER_OF_SAMPLES + phase_step_rad * (double)var_index; \
+		ag_fixedpoint_float_t sine_val = (ag_fixedpoint_float_t)(SINE_OFF_##type + SINE_AMP_##type * sin(phase)); \
+		strct##var_id.data[i] = ag_fixedpoint_##type##_from_float(sine_val);                                      \
+		strct##var_id.data_float[i] = ag_fixedpoint_##type##_to_float(strct##var_id.data[i]);                     \
+	} else {                                                                                                      \
+		assert(i >= 1);                                                                                           \
+		strct##var_id.data[i] = strct##var_id.data[i - 1U];                                                       \
+		strct##var_id.data_float[i] = strct##var_id.data_float[i - 1U];                                           \
+	}                                                                                                             \
+	var_index++;
+
+	for (uint32_t i = 0U; i < NUMBER_OF_SAMPLES; i++) {
+		var_index = 0U;
+		R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_FILL_SINE)
+	}
+
+#undef EXPAND_AS_FILL_SINE
+#undef SINE_AMP_uq16_0
+#undef SINE_OFF_uq16_0
+#undef SINE_AMP_uq12_4
+#undef SINE_OFF_uq12_4
+#undef SINE_AMP_uq10_6
+#undef SINE_OFF_uq10_6
+#undef SINE_AMP_uq6_10
+#undef SINE_OFF_uq6_10
+#undef SINE_AMP_uq4_12
+#undef SINE_OFF_uq4_12
+#undef SINE_AMP_uq8_0
+#undef SINE_OFF_uq8_0
+#undef SINE_AMP_uq32_0
+#undef SINE_OFF_uq32_0
+#undef SINE_AMP_q4_11
+#undef SINE_OFF_q4_11
+#undef SINE_AMP_q3_12
+#undef SINE_OFF_q3_12
+#undef SINE_AMP_q3_28
+#undef SINE_OFF_q3_28
+#undef SINE_AMP_q15_0
+#undef SINE_OFF_q15_0
+#undef SINE_AMP_q7_0
+#undef SINE_OFF_q7_0
+#undef SINE_AMP_q31_0
+#undef SINE_OFF_q31_0
+}
+
+/**
+ * @brief Helper function to get pointer to variable data based on variable ID
+ */
+static void* Test_HelperGetVariableByID(r1up_variable_id_t var_id_search) {
+#define EXPAND_AS_SEARCH_VARIABLES(var_id, type_id, type, fd, ...) \
+	if (var_id_search == strct##var_id.variable_id) {              \
+		return strct##var_id.data;                                 \
+	}
+	R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_SEARCH_VARIABLES)
+#undef EXPAND_AS_SEARCH_VARIABLES
+	return NULL;
+}
+
+static ag_fixedpoint_float_t* Test_HelperGetFloatVariableByID(r1up_variable_id_t var_id_search) {
+#define EXPAND_AS_SEARCH_VARIABLES(var_id, type_id, type, fd, ...) \
+	if (var_id_search == strct##var_id.variable_id) {              \
+		return strct##var_id.data_float;                           \
+	}
+	R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_SEARCH_VARIABLES)
+#undef EXPAND_AS_SEARCH_VARIABLES
+	return NULL;
+}
+
+static void Test_HelperFileDelete(const char* filename) { remove(filename); }
+
+static bool Test_HelperCompareFiles(const char* file1, const char* file2) {
+	// WORKAROUND: Windows NTFS filesystem cache can serve stale data even to PowerShell Get-FileHash
+	// when files are written, closed, and immediately read in rapid succession.
+	// Adding a minimal delay (250ms) allows the cache manager to synchronize properly.
+	// This is NOT masking a code bug - files are physically identical on disk (verified manually).
+	// Root cause: Windows cache manager optimization serving inconsistent data between file handles.
+#ifdef _WIN32
+	// test_sleep_ms(10);	// 1000ms delay to mitigate Windows filesystem caching issues
+#endif
+
+#ifdef _WIN32
+	// Windows: Use PowerShell script with SHA256 hash comparison
+	// This forces complete file read, reducing (but not eliminating) cache issues
+	char cmd[1024];
+	snprintf(cmd, sizeof(cmd), "powershell -ExecutionPolicy Bypass -NoProfile -File compare_files.ps1 \"%s\" \"%s\"",
+			 file1, file2);
+
+	print_message("[ DEBUG ] Executing: %s\n", cmd);
+	int result = system(cmd);
+	print_message("[ DEBUG ] PowerShell exit code: %d\n", result);
+
+	// Exit codes from compare_files.ps1:
+	// 0 = files identical
+	// 1 = files differ
+	// 2 = file not found
+	// 3 = hash computation error
+
+	if (result == 0) {
+		print_message("[ INFO ] Files are identical (verified by SHA256 hash)\n");
+		return true;
+	} else if (result == 1) {
+		print_message("[ ERROR ] Files differ (SHA256 hashes don't match)\n");
+		print_message("  File1: %s\n", file1);
+		print_message("  File2: %s\n", file2);
+		return false;
+	} else {
+		print_message("[ WARN ] PowerShell comparison failed (exit code %d), using fallback\n", result);
+		// Fall through to traditional comparison
+	}
+#endif
+
+	// Traditional byte-by-byte comparison (fallback for Linux or if PowerShell fails)
+	FILE* fp1 = fopen(file1, "rb");
+	if (!fp1) {
+		TEST_PRINT_ERROR("[ ERROR ] Cannot open file: %s\n", file1);
+		return false;
+	}
+
+	FILE* fp2 = fopen(file2, "rb");
+	if (!fp2) {
+		TEST_PRINT_ERROR("[ ERROR ] Cannot open file: %s\n", file2);
+		fclose(fp1);
+		return false;
+	}
+
+	// Get file sizes
+	fseek(fp1, 0, SEEK_END);
+	long size1 = ftell(fp1);
+	fseek(fp1, 0, SEEK_SET);
+
+	fseek(fp2, 0, SEEK_END);
+	long size2 = ftell(fp2);
+	fseek(fp2, 0, SEEK_SET);
+
+	if (size1 != size2) {
+		TEST_PRINT_ERROR("[ ERROR ] File sizes differ: %s (%ld bytes) vs %s (%ld bytes)\n", file1, size1, file2, size2);
+		fclose(fp1);
+		fclose(fp2);
+		return false;
+	}
+
+	// Compare byte by byte
+	bool files_equal = true;
+	long position = 0;
+	int ch1, ch2;
+
+	while ((ch1 = fgetc(fp1)) != EOF) {
+		ch2 = fgetc(fp2);
+		if (ch1 != ch2) {
+			TEST_PRINT_ERROR("[ ERROR ] Files differ at byte offset %ld: 0x%02X vs 0x%02X\n", position, ch1, ch2);
+			files_equal = false;
+			break;
+		}
+		position++;
+	}
+
+	fclose(fp1);
+	fclose(fp2);
+
+	if (files_equal) {
+		TEST_PRINT_INFO("[ INFO ] Files are identical (%ld bytes)\n", size1);
+	}
+
+	return files_equal;
+}
+
+/**
+ * @brief Helper macro to print debug information about an array of values
+ * @param var_name Name of the variable (string)
+ * @param buffer Pointer to the array buffer
+ * @param samples_num Number of samples in the buffer
+ * @param type Type of the elements (e.g., uint16_t, uint32_t)
+ * @param format Printf format specifier (e.g., "%u", "%d")
+ */
+#define TEST_HELPER_PRINT_ARRAY_DEBUG(var_name, buffer, samples_num, type, format)                        \
+	do {                                                                                                  \
+		TEST_PRINT_DEBUG("\n--- %s Debug Info ---\n", var_name);                                          \
+		TEST_PRINT_DEBUG("Total samples: %lu\n", (unsigned long)samples_num);                             \
+		TEST_PRINT_DEBUG("First 10 values:\n");                                                           \
+		for (uint32_t i = 0; i < 10 && i < samples_num; i++) {                                            \
+			TEST_PRINT_DEBUG("  [%u] = " format "\n", i, ((const type*)buffer)[i]);                       \
+		}                                                                                                 \
+		if (samples_num > 20) {                                                                           \
+			TEST_PRINT_DEBUG("Middle 5 values (around sample %lu):\n", (unsigned long)(samples_num / 2)); \
+			for (uint32_t i = (samples_num / 2) - 2; i < (samples_num / 2) + 3 && i < samples_num; i++) { \
+				TEST_PRINT_DEBUG("  [%u] = " format "\n", i, ((const type*)buffer)[i]);                   \
+			}                                                                                             \
+		}                                                                                                 \
+		TEST_PRINT_DEBUG("Last 10 values:\n");                                                            \
+		uint32_t start_idx = samples_num > 10 ? samples_num - 10 : 0;                                     \
+		for (uint32_t i = start_idx; i < samples_num; i++) {                                              \
+			TEST_PRINT_DEBUG("  [%u] = " format "\n", i, ((const type*)buffer)[i]);                       \
+		}                                                                                                 \
+		TEST_PRINT_DEBUG("--- End %s Debug ---\n\n", var_name);                                           \
+	} while (0)
+
+// --------------------------------------------------------------------------------------------------------------------
+//	Functions
+// --------------------------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief An example setup function.
+///
+/// This function can be registered as a setup function in the CMocka unit test framework. This Doxygen description
+/// shall contain detailed information about the setup function. For example it shall describe what is initialized by
+/// the setup function.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static int Test_Setup(void** state) {
+	// Allocate context with timestamp + counter for absolute uniqueness (avoids Windows cache conflicts)
+	test_context_t* ctx = (test_context_t*)malloc(sizeof(test_context_t));
+	if (ctx) {
+		ctx->timestamp = time(NULL);
+		ctx->counter = test_execution_counter++;
+		*state = ctx;
+	}
+	return 0;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief An example teardown function.
+///
+/// This function can be registered as a teardown function in the CMocka unit test framework. This Doxygen description
+/// shall contain detailed information about the teardown function. For example it shall describe what is cleaned-up by
+/// the teardown function.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static int Test_Teardown(void** state) {
+	// Free timestamp allocated in setup
+	if (*state) {
+		free(*state);
+		*state = NULL;
+	}
+	return 0;
+}
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: Open a file, write the header and close the file successfully.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_OpenAndCloseHeaderAndFile_Success(void** state) {
+	(void)state;  // unused
+
+	const char* test_filename = "test_file.r1up";
+	Test_HelperFileDelete(test_filename);  // ensure file does not exist before test
+
+	r1up_file_handle_t handle = r1up_file_open(test_filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	r1up_file_result_t result = r1up_file_close_header(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	result = r1up_file_close(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	Test_HelperFileDelete(test_filename);  // remove file after test
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: Open a file, set a custom block in the header and close the file successfully.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_CustomBlockSet_Success(void** state) {
+	(void)state;  // unused
+	extern void r1up_file_debug_helper_print_block_list(r1up_file_handle_t handle);
+
+	const char* test_filename = "test_file_custom_block.r1up";
+	Test_HelperFileDelete(test_filename);  // ensure file does not exist before test
+
+	const char* CUSTOM_BLOCK01_BID =
+		"CUSTOM_BLOCK_01____";	// must exist from open to close the file and must be at least 16 chars
+	const char* CUSTOM_BLOCK02_BID =
+		"CUSTOM_BLOCK_02____";	// must exist from open to close the file and must be at least 16 chars
+
+	r1up_file_handle_t handle = r1up_file_open(test_filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	r1up_file_result_t result;
+
+	// Set a custom block in the header section
+	result = r1up_file_add_custom_block(handle, R1UP_FILE_HEADER_BID, CUSTOM_BLOCK01_BID,
+										(void*)"Custom Header Block Data", 24);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Set a custom block in the footer section
+	result = r1up_file_add_custom_block(handle, R1UP_FILE_FOOTER_BID, CUSTOM_BLOCK02_BID,
+										(void*)"Custom Footer Block Data", 24);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_NONE) r1up_file_debug_helper_print_block_list(handle);
+
+	result = r1up_file_close_header(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	result = r1up_file_close(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	Test_HelperFileDelete(test_filename);  // Remove file after test
+}
+//--------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: Open a file, write some data in some blocks and close the file successfully.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+//--------------------------------------------------------------------------------------------------------------------
+static void Test_OpenSetBlockPayloadCloseFile_Success(void** state) {
+	(void)state;  // unused
+	extern void r1up_file_debug_helper_print_block_ids(r1up_file_handle_t handle);
+	const char* test_filename = "test_file_set_block_payload.r1up";
+	Test_HelperFileDelete(test_filename);  // ensure file does not exist before test
+
+	r1up_file_handle_t handle = r1up_file_open(test_filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	// print blocks ids
+	if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_NONE) r1up_file_debug_helper_print_block_ids(handle);
+
+	char payload_buffer[256];
+	r1up_file_result_t result;
+
+	// Edit an existing default header block
+	strcpy(payload_buffer, "Hello! My Name Is Alex. Bluetooth is missing from the hardware!!! Fucking shit");
+	result = r1up_file_set_block_payload(handle, R1UP_FILE_STRING_BID, (void*)payload_buffer, strlen(payload_buffer));
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Edit a not writable default header block - should fail
+	result = r1up_file_set_block_payload(handle, R1UP_FILE_BUILD_DATE_BID, (void*)"1", 1);
+	assert_int_equal(result, R1UP_FILE_ERROR_ACCESS);
+
+	// Edit R1UP_FILE_HEADER_BID - should fail
+	result = r1up_file_set_block_payload(handle, R1UP_FILE_HEADER_BID, (void*)"1", 1);
+	assert_int_equal(result, R1UP_FILE_ERROR_ACCESS);
+
+	result = r1up_file_close_header(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	strcpy(payload_buffer, "Hello! My Name Is Alex. Bluetooth is missing from the hardware!!! Fucking shit");
+	// Edit an existing default header block after header is closed - should fail
+	result = r1up_file_set_block_payload(handle, R1UP_FILE_STRING_BID, (void*)payload_buffer, strlen(payload_buffer));
+	assert_int_equal(result, R1UP_FILE_ERROR_INVALID_STATE);
+
+	// Edit footer track block
+	strcpy(payload_buffer, "Track for Zirri Vespa");
+	result =
+		r1up_file_set_block_payload(handle, R1UP_FILE_TRACK_FTR_BID, (void*)payload_buffer, strlen(payload_buffer));
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Edit session footer block
+	strcpy(payload_buffer, "Session for Zirri Vespa");
+	result =
+		r1up_file_set_block_payload(handle, R1UP_FILE_SESSION_FTR_BID, (void*)payload_buffer, strlen(payload_buffer));
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	result = r1up_file_close(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	Test_HelperFileDelete(test_filename);  // remove file after test
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: Write variables in the body of a R1UP file.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_WriteVariablesInBodyAndGetBodyInfo_Success(void** state) {
+	// file name
+	const char* filename = "test_file_body_write.rer";
+
+	// Remove the file if it exists from previous test runs
+	Test_HelperFileDelete(filename);
+
+	// open the file for writing
+	r1up_file_handle_t handle = r1up_file_open(filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	// Fill test variables with random data before writing to file
+	Test_HelperFillVariables();
+
+	// Scanning all variables and write them to the file, the data to write is in strct##var_id.data[i]
+#define EXPAND_AS_WRITE_VARIABLES(var_id, type_id, type, fd, ...) \
+	r1up_file_set_var(handle, var_id, &strct##var_id.data[i]);
+
+	for (uint32_t i = 0U; i < NUMBER_OF_SAMPLES; i++) {
+		R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_WRITE_VARIABLES)
+		// write the variables to the file
+		r1up_file_update_vars(handle);
+	}
+#undef EXPAND_AS_WRITE_VARIABLES
+
+	TEST_PRINT_INFO("Closing file...\n");
+	r1up_file_result_t result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Re-open the file for reading
+	TEST_PRINT_INFO("Re-opening file for reading body info...\n");
+	handle = r1up_file_open(filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(handle);
+
+	result = r1up_file_read_body(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	r1up_file_body_info_t body_info;
+	result = r1up_file_get_body_info(handle, &body_info);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	TEST_PRINT_INFO("Body Info:\n");
+	TEST_PRINT_INFO("  Total Samples   : %lu\n", (unsigned long)body_info.total_samples);
+	TEST_PRINT_INFO("  Variable Count  : %u\n", body_info.variable_count);
+
+	TEST_PRINT_INFO("Closing file...\n");
+	result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Remove the file if it exists from previous test runs
+	Test_HelperFileDelete(filename);
+}
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: Write variables in the body of a R1UP file.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_WriteVariablesInBody_Success(void** state) {
+	// file name
+	const char* filename = "test_file_body_write.rer";
+
+	// Remove the file if it exists from previous test runs
+	Test_HelperFileDelete(filename);
+
+	// open the file for writing
+	r1up_file_handle_t handle = r1up_file_open(filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	// Fill test variables with random data before writing to file
+	Test_HelperFillVariables();
+
+	// Scanning all variables and write them to the file, the data to write is in strct##var_id.data[i]
+#define EXPAND_AS_WRITE_VARIABLES(var_id, type_id, type, fd, ...) \
+	r1up_file_set_var(handle, var_id, &strct##var_id.data[i]);
+
+	for (uint32_t i = 0U; i < NUMBER_OF_SAMPLES; i++) {
+		R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_WRITE_VARIABLES)
+		// write the variables to the file
+		r1up_file_update_vars(handle);
+	}
+#undef EXPAND_AS_WRITE_VARIABLES
+
+	TEST_PRINT_INFO("Closing file...\n");
+	r1up_file_result_t result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Remove the file if it exists from previous test runs
+	Test_HelperFileDelete(filename);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: Write and Read variables in the body of a R1UP file.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_WriteAndReadVariablesInBody_RawFunction_Success(void** state) {
+	// file name
+	const char* filename = "test_file_body_write.rer";
+	extern void r1up_file_debug_helper_print_metadata(r1up_file_handle_t handle);
+
+	// Remove the file if it exists from previous test runs
+	Test_HelperFileDelete(filename);
+
+	// open the file for writing
+	r1up_file_handle_t handle = r1up_file_open(filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	// Fill test variables with random data before writing to file
+	Test_HelperFillVariables();
+
+	// Scanning all variables and write them to the file, the data to write is in strct##var_id.data[i]
+#define EXPAND_AS_WRITE_VARIABLES(var_id, type_id, type, fd, ...) \
+	r1up_file_set_var(handle, var_id, &strct##var_id.data[i]);
+
+	for (uint32_t i = 0U; i < NUMBER_OF_SAMPLES; i++) {
+		R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_WRITE_VARIABLES)
+		// write the variables to the file
+		r1up_file_update_vars(handle);
+	}
+#undef EXPAND_AS_WRITE_VARIABLES
+
+	TEST_PRINT_INFO("Closing file...\n");
+	r1up_file_result_t result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Re-open the file for reading
+	TEST_PRINT_INFO("Re-opening file for reading...\n");
+	handle = r1up_file_open(filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(handle);
+
+	if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_NONE) r1up_file_debug_helper_print_metadata(handle);
+
+	r1up_file_result_t read_result = r1up_file_read_body(handle);
+	assert_int_equal(read_result, R1UP_FILE_SUCCESS);
+
+	/* Generic read verification using VARIABLE_ID_TABLE (not tied to write config) */
+	/* This approach works for ANY file, regardless of variable-to-type mapping */
+
+	/* Scan ALL known variables from database */
+	TEST_PRINT_INFO("Verifying all variables from R1UP_FILE_VARIABLE_ID_TABLE...\n");
+	R1UP_FILE_VARIABLE_ID_TABLE(VERIFY_VARIABLE_WITH_RAW_FUNCTION)
+#undef EXPAND_AS_CAST_AND_COMPARE
+#undef VERIFY_VARIABLE_GENERIC
+
+	TEST_PRINT_INFO("Closing file...\n");
+	result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Remove the file if it exists from previous test runs
+	Test_HelperFileDelete(filename);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: Write and Read variables in the body of a R1UP file.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_WriteAndReadVariablesInBody_GetFloatFunction_Success(void** state) {
+	// file name
+	const char* filename = "test_file_body_write.rer";
+	extern void r1up_file_debug_helper_print_metadata(r1up_file_handle_t handle);
+
+	// Remove the file if it exists from previous test runs
+	Test_HelperFileDelete(filename);
+
+	// open the file for writing
+	r1up_file_handle_t handle = r1up_file_open(filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	// Fill test variables with random data before writing to file
+	Test_HelperFillVariables();
+
+	// Scanning all variables and write them to the file, the data to write is in strct##var_id.data[i]
+#define EXPAND_AS_WRITE_VARIABLES(var_id, type_id, type, fd, ...) \
+	r1up_file_set_var(handle, var_id, &strct##var_id.data[i]);
+
+	for (uint32_t i = 0U; i < NUMBER_OF_SAMPLES; i++) {
+		R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_WRITE_VARIABLES)
+		// write the variables to the file
+		r1up_file_update_vars(handle);
+	}
+#undef EXPAND_AS_WRITE_VARIABLES
+
+	TEST_PRINT_INFO("Closing file...\n");
+	r1up_file_result_t result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Re-open the file for reading
+	TEST_PRINT_INFO("Re-opening file for reading...\n");
+	handle = r1up_file_open(filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(handle);
+
+	if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_NONE) r1up_file_debug_helper_print_metadata(handle);
+
+	r1up_file_result_t read_result = r1up_file_read_body(handle);
+	assert_int_equal(read_result, R1UP_FILE_SUCCESS);
+
+#define EXPAND_AS_COMPARE_FLOAT(var_id_symbol, var_id_value, ...)                                           \
+	{                                                                                                       \
+		r1up_file_size_t total_sample_num_in_file = r1up_file_get_body_sample_count(handle);                \
+		ag_fixedpoint_float_t* float_data_from_file =                                                       \
+			(ag_fixedpoint_float_t*)malloc(total_sample_num_in_file * sizeof(ag_fixedpoint_float_t));       \
+		assert_non_null(float_data_from_file);                                                              \
+		r1up_file_result_t res =                                                                            \
+			r1up_file_get_var_float(handle, var_id_symbol, float_data_from_file, total_sample_num_in_file); \
+		assert_int_equal(res, R1UP_FILE_SUCCESS);                                                           \
+                                                                                                            \
+		const ag_fixedpoint_float_t* ref_buffer = Test_HelperGetFloatVariableByID(var_id_symbol);           \
+		for (r1up_file_size_t i = 0; i < total_sample_num_in_file; i++) {                                   \
+			if (float_data_from_file[i] != ref_buffer[i]) {                                                 \
+				TEST_PRINT_ERROR("    Mismatch at sample %lu: read=%f, expected=%f\n", (unsigned long)i,    \
+								 float_data_from_file[i], ref_buffer[i]);                                   \
+			}                                                                                               \
+			assert_float_equal(float_data_from_file[i], ref_buffer[i], 1e-5f);                              \
+		}                                                                                                   \
+		free((void*)float_data_from_file);                                                                  \
+	}
+
+	/* Scan ALL known variables from database */
+	TEST_PRINT_INFO("Verifying all variables from R1UP_FILE_VARIABLE_ID_TABLE...\n");
+	R1UP_FILE_VARIABLE_ID_TABLE(EXPAND_AS_COMPARE_FLOAT)
+#undef EXPAND_AS_COMPARE_FLOAT
+
+	TEST_PRINT_INFO("Closing file...\n");
+	result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Remove the file if it exists from previous test runs
+	Test_HelperFileDelete(filename);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: Write and Read sine content variables in the body of a R1UP file.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_WriteAndReadSineVariablesInBody_GetFloatFunction_Success(void** state) {
+	// file name
+	const char* filename = ".\\reracefile\\artifacts\\test_file_sine_variables.r1up";
+	extern void r1up_file_debug_helper_print_metadata(r1up_file_handle_t handle);
+
+	// This file is not deleted at the end of the test to allow manual inspection and debugging if needed.
+
+	// open the file for writing
+	r1up_file_handle_t handle = r1up_file_open(filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	// Fill test variables with sinusoidal data before writing to file
+	Test_HelperFillVariablesSine(5.0, M_PI / 6.0);
+
+	// Scanning all variables and write them to the file, the data to write is in strct##var_id.data[i]
+#define EXPAND_AS_WRITE_VARIABLES(var_id, type_id, type, fd, ...) \
+	r1up_file_set_var(handle, var_id, &strct##var_id.data[i]);
+
+	for (uint32_t i = 0U; i < NUMBER_OF_SAMPLES; i++) {
+		R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_WRITE_VARIABLES)
+		// write the variables to the file
+		r1up_file_update_vars(handle);
+	}
+#undef EXPAND_AS_WRITE_VARIABLES
+
+	TEST_PRINT_INFO("Closing file...\n");
+	r1up_file_result_t result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Re-open the file for reading
+	TEST_PRINT_INFO("Re-opening file for reading...\n");
+	handle = r1up_file_open(filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(handle);
+
+	if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_NONE) r1up_file_debug_helper_print_metadata(handle);
+
+	r1up_file_result_t read_result = r1up_file_read_body(handle);
+	assert_int_equal(read_result, R1UP_FILE_SUCCESS);
+
+#define EXPAND_AS_COMPARE_FLOAT(var_id_symbol, var_id_value, ...)                                           \
+	{                                                                                                       \
+		r1up_file_size_t total_sample_num_in_file = r1up_file_get_body_sample_count(handle);                \
+		ag_fixedpoint_float_t* float_data_from_file =                                                       \
+			(ag_fixedpoint_float_t*)malloc(total_sample_num_in_file * sizeof(ag_fixedpoint_float_t));       \
+		assert_non_null(float_data_from_file);                                                              \
+		r1up_file_result_t res =                                                                            \
+			r1up_file_get_var_float(handle, var_id_symbol, float_data_from_file, total_sample_num_in_file); \
+		assert_int_equal(res, R1UP_FILE_SUCCESS);                                                           \
+                                                                                                            \
+		const ag_fixedpoint_float_t* ref_buffer = Test_HelperGetFloatVariableByID(var_id_symbol);           \
+		for (r1up_file_size_t i = 0; i < total_sample_num_in_file; i++) {                                   \
+			if (float_data_from_file[i] != ref_buffer[i]) {                                                 \
+				TEST_PRINT_ERROR("    Mismatch at sample %lu: read=%f, expected=%f\n", (unsigned long)i,    \
+								 float_data_from_file[i], ref_buffer[i]);                                   \
+			}                                                                                               \
+			assert_float_equal(float_data_from_file[i], ref_buffer[i], 1e-5f);                              \
+		}                                                                                                   \
+		free((void*)float_data_from_file);                                                                  \
+	}
+
+	/* Scan ALL known variables from database */
+	TEST_PRINT_INFO("Verifying all variables from R1UP_FILE_VARIABLE_ID_TABLE...\n");
+	R1UP_FILE_VARIABLE_ID_TABLE(EXPAND_AS_COMPARE_FLOAT)
+#undef EXPAND_AS_COMPARE_FLOAT
+
+	TEST_PRINT_INFO("Closing file...\n");
+	result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: Write sine content variables in the body of a R1UP file and test r1up_file_mark_lap.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_WriteSineVariablesInBody_R1upFileMarkLap_Success(void** state) {
+	// file name
+	const char* filename = ".\\reracefile\\artifacts\\test_file_sine_variables_file_mark_lap.r1up";
+	extern void r1up_file_debug_helper_print_block_list(r1up_file_handle_t handle);
+
+	// This file is not deleted at the end of the test to allow manual inspection and debugging if needed.
+
+	// open the file for writing
+	r1up_file_handle_t handle = r1up_file_open(filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	// Fill test variables with sinusoidal data before writing to file
+	Test_HelperFillVariablesSine(5.0, M_PI / 6.0);
+
+	// Lap interval: mark a new lap every 60 seconds (600 samples at 10 Hz)
+	// With 3000 total samples (5 min), this gives lap markers at samples 600, 1200, 1800, 2400
+	const uint32_t lap_interval = 60U * R1UP_FILE_DFLT_SMPL_FRQ;  // 600 samples
+	uint32_t lap_count = 0U;
+
+	// Scanning all variables and write them to the file, the data to write is in strct##var_id.data[i]
+#define EXPAND_AS_WRITE_VARIABLES(var_id, type_id, type, fd, ...) \
+	r1up_file_set_var(handle, var_id, &strct##var_id.data[i]);
+
+	for (uint32_t i = 0U; i < NUMBER_OF_SAMPLES; i++) {
+		// Simulate lap crossing at regular intervals (skip sample 0 — first lap starts implicitly)
+		if ((i > 0U) && (i % lap_interval == 0U)) {
+			r1up_file_result_t lap_result = r1up_file_mark_lap(handle);
+			assert_int_equal(lap_result, R1UP_FILE_SUCCESS);
+			lap_count++;
+			TEST_PRINT_INFO("Lap %u marked at sample %u\n", lap_count, i);
+		}
+
+		R1UP_FILE_VARS_STREAM_FORMAT_TABLE(EXPAND_AS_WRITE_VARIABLES)
+		// write the variables to the file
+		r1up_file_update_vars(handle);
+	}
+#undef EXPAND_AS_WRITE_VARIABLES
+
+	TEST_PRINT_INFO("Total laps marked: %u\n", lap_count);
+
+	TEST_PRINT_INFO("Closing file...\n");
+	r1up_file_result_t result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Re-open the file for reading the block list and verify lap markers
+	TEST_PRINT_INFO("Re-opening file for reading...\n");
+	handle = r1up_file_open(filename, R1UP_FILE_MODE_READ_ONLY);
+
+	assert_non_null(handle);
+	if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_NONE) r1up_file_debug_helper_print_block_list(handle);
+
+	// ── Round-trip verification: lap count ──────────────────────────────────────
+	uint32_t read_lap_count = 0U;
+	assert_int_equal(r1up_file_get_lap_count(handle, &read_lap_count), R1UP_FILE_SUCCESS);
+	// 4 crossings → 3 complete laps
+	TEST_PRINT_INFO("Lap count (complete laps): %u\n", read_lap_count);
+	assert_int_equal(read_lap_count, 3U);
+
+	// ── Round-trip verification: sample ranges ──────────────────────────────────
+	r1up_file_size_t start_sample = 0U, end_sample = 0U;
+
+	// Outlap (lap_number = 0): sample 0 … 599
+	assert_int_equal(r1up_file_get_lap_sample_range(handle, 0U, &start_sample, &end_sample), R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("Outlap:  samples [%lu … %lu]\n", (unsigned long)start_sample, (unsigned long)end_sample);
+	assert_int_equal(start_sample, 0U);
+	assert_int_equal(end_sample, 599U);
+
+	// Giro 1 (lap_number = 1): sample 600 … 1199
+	assert_int_equal(r1up_file_get_lap_sample_range(handle, 1U, &start_sample, &end_sample), R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("Lap 1:   samples [%lu … %lu]\n", (unsigned long)start_sample, (unsigned long)end_sample);
+	assert_int_equal(start_sample, 600U);
+	assert_int_equal(end_sample, 1199U);
+
+	// Giro 2 (lap_number = 2): sample 1200 … 1799
+	assert_int_equal(r1up_file_get_lap_sample_range(handle, 2U, &start_sample, &end_sample), R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("Lap 2:   samples [%lu … %lu]\n", (unsigned long)start_sample, (unsigned long)end_sample);
+	assert_int_equal(start_sample, 1200U);
+	assert_int_equal(end_sample, 1799U);
+
+	// Giro 3 (lap_number = 3): sample 1800 … 2399
+	assert_int_equal(r1up_file_get_lap_sample_range(handle, 3U, &start_sample, &end_sample), R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("Lap 3:   samples [%lu … %lu]\n", (unsigned long)start_sample, (unsigned long)end_sample);
+	assert_int_equal(start_sample, 1800U);
+	assert_int_equal(end_sample, 2399U);
+
+	// Inlap (lap_number = 4): sample 2400 … 2999
+	assert_int_equal(r1up_file_get_lap_sample_range(handle, 4U, &start_sample, &end_sample), R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("Inlap:   samples [%lu … %lu]\n", (unsigned long)start_sample, (unsigned long)end_sample);
+	assert_int_equal(start_sample, 2400U);
+	assert_int_equal(end_sample, 2999U);
+
+	// Invalid lap_number = 5 → error
+	assert_int_equal(r1up_file_get_lap_sample_range(handle, 5U, &start_sample, &end_sample),
+					 R1UP_FILE_ERROR_INVALID_PARAM);
+
+	TEST_PRINT_INFO("Closing file...\n");
+	result = r1up_file_close(handle);
+	TEST_PRINT_INFO("File closed with result: %d (0x%x)\n", result, result);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test case: r1up_file_get_var_float_by_lap — verify lap-sliced float extraction matches full body extraction
+///
+/// \details Opens the file produced by Test_WriteSineVariablesInBody_R1upFileMarkLap_Success,
+/// reads the full body, then for every segment (outlap + 3 laps + inlap) extracts RPM data
+/// via r1up_file_get_var_float_by_lap() and verifies it matches the corresponding slice of
+/// the full r1up_file_get_var_float() output.
+///
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_GetVarFloatByLap_Success(void** state) {
+	(void)state;  // unused
+
+	// This file was created and kept on disk by Test_WriteSineVariablesInBody_R1upFileMarkLap_Success
+	const char* filename = ".\\reracefile\\artifacts\\test_file_sine_variables_file_mark_lap.r1up";
+
+	// Open for reading
+	r1up_file_handle_t handle = r1up_file_open(filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(handle);
+
+	// Read the body
+	r1up_file_result_t res = r1up_file_read_body(handle);
+	assert_int_equal(res, R1UP_FILE_SUCCESS);
+
+	// Get total sample count and lap count
+	r1up_file_size_t total_samples = r1up_file_get_body_sample_count(handle);
+	assert_true(total_samples > 0U);
+
+	uint32_t lap_count = 0U;
+	assert_int_equal(r1up_file_get_lap_count(handle, &lap_count), R1UP_FILE_SUCCESS);
+	assert_int_equal(lap_count, 3U);  // 4 crossings → 3 complete laps
+
+	// ── Get ALL RPM samples via r1up_file_get_var_float (reference) ─────────────
+	ag_fixedpoint_float_t* all_rpm = (ag_fixedpoint_float_t*)malloc(total_samples * sizeof(ag_fixedpoint_float_t));
+	assert_non_null(all_rpm);
+	res = r1up_file_get_var_float(handle, R1UP_FILE_VAR_ID_RPM, all_rpm, total_samples);
+	assert_int_equal(res, R1UP_FILE_SUCCESS);
+
+	// ── For each segment, verify r1up_file_get_var_float_by_lap matches the slice ─
+	// Total segments: outlap (0) + 3 laps (1,2,3) + inlap (4) = 5
+	const uint32_t total_segments = lap_count + 2U;	 // outlap + laps + inlap
+
+	for (uint32_t seg = 0U; seg <= total_segments - 1U; seg++) {
+		r1up_file_size_t start_sample = 0U, end_sample = 0U;
+		res = r1up_file_get_lap_sample_range(handle, seg, &start_sample, &end_sample);
+		assert_int_equal(res, R1UP_FILE_SUCCESS);
+
+		r1up_file_size_t expected_count = (r1up_file_size_t)(end_sample - start_sample + 1U);
+
+		// Allocate buffer for this lap
+		ag_fixedpoint_float_t* lap_rpm = (ag_fixedpoint_float_t*)malloc(expected_count * sizeof(ag_fixedpoint_float_t));
+		assert_non_null(lap_rpm);
+
+		r1up_file_size_t actual_count = 0U;
+		res = r1up_file_get_var_float_by_lap(handle, R1UP_FILE_VAR_ID_RPM, seg, lap_rpm, expected_count, &actual_count);
+		assert_int_equal(res, R1UP_FILE_SUCCESS);
+		assert_int_equal(actual_count, expected_count);
+
+		// Verify every sample matches the corresponding position in the full array
+		for (uint32_t i = 0U; i < actual_count; i++) {
+			assert_float_equal(lap_rpm[i], all_rpm[start_sample + i], 0.0);
+		}
+
+		TEST_PRINT_INFO("Segment %u: samples [%lu..%lu] (%u samples) — OK\n", seg, (unsigned long)start_sample,
+						(unsigned long)end_sample, actual_count);
+
+		free(lap_rpm);
+	}
+
+	// ── Error case: buffer too small ───────────────────────────────────────────
+	{
+		ag_fixedpoint_float_t tiny_buffer[1];
+		uint32_t cnt = 0U;
+		res = r1up_file_get_var_float_by_lap(handle, R1UP_FILE_VAR_ID_RPM, 0U, tiny_buffer, 1U, &cnt);
+		// Outlap has 600 samples → buffer_size=1 is too small
+		assert_int_equal(res, R1UP_FILE_ERROR_INVALID_PARAM);
+	}
+
+	// ── Error case: invalid lap number ─────────────────────────────────────────
+	{
+		ag_fixedpoint_float_t dummy[1];
+		res = r1up_file_get_var_float_by_lap(handle, R1UP_FILE_VAR_ID_RPM, 99U, dummy, 1U, NULL);
+		assert_int_equal(res, R1UP_FILE_ERROR_INVALID_PARAM);
+	}
+
+	// ── Error case: NULL out_float ─────────────────────────────────────────────
+	{
+		res = r1up_file_get_var_float_by_lap(handle, R1UP_FILE_VAR_ID_RPM, 0U, NULL, 600U, NULL);
+		assert_int_equal(res, R1UP_FILE_ERROR_INVALID_PARAM);
+	}
+
+	// ── out_sample_count can be NULL (optional) ────────────────────────────────
+	{
+		r1up_file_size_t s0 = 0U, e0 = 0U;
+		r1up_file_get_lap_sample_range(handle, 1U, &s0, &e0);
+		uint32_t lap1_sz = (uint32_t)(e0 - s0 + 1U);
+		ag_fixedpoint_float_t* buf = (ag_fixedpoint_float_t*)malloc(lap1_sz * sizeof(ag_fixedpoint_float_t));
+		assert_non_null(buf);
+		res = r1up_file_get_var_float_by_lap(handle, R1UP_FILE_VAR_ID_RPM, 1U, buf, lap1_sz, NULL);
+		assert_int_equal(res, R1UP_FILE_SUCCESS);
+		free(buf);
+	}
+
+	free(all_rpm);
+
+	res = r1up_file_close(handle);
+	assert_int_equal(res, R1UP_FILE_SUCCESS);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function to open and close a file, printing the block list for debugging.
+/// \details This function tests the opening and closing of a R1UP file, ensuring that the file handle is valid
+/// and that the file can be closed without errors. No file is actually created on disk.
+/// It also prints the block list for debugging purposes.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_OpenAndClose_Success(void** state) {
+	(void)state;  // unused
+	extern void r1up_file_debug_helper_print_vsf(r1up_file_handle_t handle);
+
+	const char* test_filename = "test_file_gosth.r1up";
+	Test_HelperFileDelete(test_filename);  // ensure file does not exist before test
+
+	r1up_file_handle_t handle = r1up_file_open(test_filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+	r1up_file_debug_helper_print_vsf(handle);
+
+#if TEST_LOG_LEVEL >= 0x01U
+	r1up_file_debug_helper_print_block_list(handle);
+	r1up_file_debug_helper_print_variables_stream_format(handle);
+#endif
+	r1up_file_result_t result = r1up_file_close(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	Test_HelperFileDelete(test_filename);  // remove file after test
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test auto-generated filename when opening in write mode with NULL filename.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_OpenWithNullFilename_AutoGenerate_Success(void** state) {
+	(void)state;  // unused
+
+	const char* file0 = "r1up_00000.r1up";
+	const char* file1 = "r1up_00001.r1up";
+
+	// Cleanup from previous runs
+	Test_HelperFileDelete(file0);
+	Test_HelperFileDelete(file1);
+
+	// Create index 00000 so auto-generation must pick 00001.
+	r1up_file_handle_t handle0 = r1up_file_open(file0, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle0);
+	assert_int_equal(r1up_file_close(handle0), R1UP_FILE_SUCCESS);
+
+	r1up_file_handle_t handle = r1up_file_open(NULL, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	const char* pathname = r1up_file_get_pathname(handle);
+	assert_non_null(pathname);
+	assert_string_equal(pathname, file1);
+
+	assert_int_equal(r1up_file_close(handle), R1UP_FILE_SUCCESS);
+
+	// Read mode with NULL filename remains invalid.
+	assert_null(r1up_file_open(NULL, R1UP_FILE_MODE_READ_ONLY));
+
+	Test_HelperFileDelete(file0);
+	Test_HelperFileDelete(file1);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function to write and read block IDs in a R1UP file.
+/// \details This function tests writing block IDs to a R1UP file and then reading them back to verify correctness.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+static void Test_WriteAndReadBlockID_Success(void** state) {
+	(void)state;  // unused
+
+	const char* test_filename = "test_file_write_read_block_id.r1up";
+
+	Test_HelperFileDelete(test_filename);  // ensure file does not exist before test
+
+	TEST_PRINT_INFO("Opening file for writing...\n");
+	r1up_file_handle_t handle = r1up_file_open(test_filename, R1UP_FILE_MODE_WRITE_ONLY);
+	assert_non_null(handle);
+
+	TEST_PRINT_INFO("Closing file after write...\n");
+	r1up_file_result_t result = r1up_file_close(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("File closed successfully\n");
+
+	// Re-open the file for reading
+	TEST_PRINT_INFO("Re-opening file for reading...\n");
+	handle = r1up_file_open(test_filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(handle);
+#if TEST_LOG_LEVEL >= 0x01U
+	r1up_file_debug_helper_print_block_list(handle);
+#endif
+	TEST_PRINT_INFO("Closing file after read...\n");
+	result = r1up_file_close(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("File closed successfully\n");
+
+	Test_HelperFileDelete(test_filename);  // remove file after test
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function to open a legacy ReRace file and simply read its variables without verification.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_LegacyReRaceFileRead_Success(void** state) {
+	(void)state;  // unused
+	extern void r1up_file_debug_helper_print_variables_stream_format(r1up_file_handle_t handle);
+	extern void r1up_file_debug_helper_print_block_list(r1up_file_handle_t handle);
+	const char* test_filename = "reracefile/RR_0027.rer";
+
+	TEST_PRINT_INFO("Opening legacy ReRace file for reading...\n");
+	r1up_file_handle_t handle = r1up_file_open(test_filename, R1UP_FILE_MODE_READ_ONLY);
+	if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_NONE) r1up_file_debug_helper_print_block_list(handle);
+	assert_non_null(handle);
+
+	if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_NONE) r1up_file_debug_helper_print_variables_stream_format(handle);
+
+	r1up_file_result_t read_result = r1up_file_read_body(handle);
+	assert_int_equal(read_result, R1UP_FILE_SUCCESS);
+
+#define EXPAND_AS_READ_VARIABLES(var_id_symbol, var_id_value, ...)                                                    \
+	{                                                                                                                 \
+		/* Step 1: Get runtime type ID from file's VSF */                                                             \
+		r1up_type_id_t runtime_type_id;                                                                               \
+		r1up_file_result_t type_res = r1up_file_get_var_type_id(handle, var_id_symbol, &runtime_type_id);             \
+		if (type_res == R1UP_FILE_SUCCESS) {                                                                          \
+			/* Variable exists in file - get raw data */                                                              \
+			r1up_var_raw_t raw;                                                                                       \
+			r1up_file_result_t res = r1up_file_get_var_raw(handle, var_id_symbol, &raw);                              \
+			assert_int_equal(res, R1UP_FILE_SUCCESS);                                                                 \
+			assert_int_equal(raw.type_id, runtime_type_id);                                                           \
+			TEST_PRINT_INFO("  Variable %s (type_id=%u) correct read from file.\n", #var_id_symbol, runtime_type_id); \
+		} else if (type_res == R1UP_FILE_ERROR_NOT_FOUND) {                                                           \
+			/* Variable not in this file - skip */                                                                    \
+			TEST_PRINT_WARNING("  Variable %s: not present in file (OK)\n", #var_id_symbol);                          \
+		} else {                                                                                                      \
+			/* Unexpected error, assert_int_equal(type_res, R1UP_FILE_SUCCESS) make test fail */                      \
+			TEST_PRINT_ERROR("ERROR: Failed to get type for %s: %d\n", #var_id_symbol, type_res);                     \
+			assert_int_equal(type_res, R1UP_FILE_SUCCESS);                                                            \
+		}                                                                                                             \
+	}
+
+	R1UP_FILE_VARIABLE_ID_TABLE(EXPAND_AS_READ_VARIABLES)
+#undef EXPAND_AS_READ_VARIABLES
+	r1up_file_result_t result = r1up_file_close(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("File closed successfully\n");
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function to open a legacy ReRace file read and print GPS Speed variable values.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_LegacyReRaceFileRead_PrintVar_Success(void** state) {
+	(void)state;  // unused
+
+	const char* test_filename = "reracefile/RR_0027.rer";
+
+	TEST_PRINT_INFO("Opening legacy ReRace file for reading...\n");
+	r1up_file_handle_t handle = r1up_file_open(test_filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(handle);
+
+	r1up_file_result_t read_result = r1up_file_read_body(handle);
+	assert_int_equal(read_result, R1UP_FILE_SUCCESS);
+
+	r1up_file_size_t sample_count = r1up_file_get_body_sample_count(handle);
+	assert_int_equal(sample_count, 4730U);	// sample count expected from "reracefile/RR_0027.rer"
+
+	// Read GPS Speed variable using raw function
+	r1up_var_raw_t raw;
+	r1up_file_result_t res = r1up_file_get_var_raw(handle, R1UP_FILE_VAR_ID_GPS_SPEED, &raw);
+	assert_int_equal(res, R1UP_FILE_SUCCESS);
+	assert_int_equal(raw.type_id, R1UP_FILE_TYPE_ID_UQ16_0);
+	const ag_fixedpoint_uq16_0_t* gps_speed_buffer = raw.value.as_uq16_0;
+	assert_non_null(gps_speed_buffer);
+	TEST_PRINT_INFO("GPS Speed variable read successfully. Total samples: %lu\n", (unsigned long)sample_count);
+	TEST_HELPER_PRINT_ARRAY_DEBUG("GPS Speed", gps_speed_buffer, sample_count, uint16_t, "%u");
+
+	r1up_file_result_t result = r1up_file_close(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("File closed successfully\n");
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function to convert a legacy ReRace file to RaceCapture CSV format.
+/// \details Tests the complete conversion pipeline using the r1up_to_racecapture library.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_R1UPToRaceCaptureConversion_Success(void** state) {
+	test_context_t* ctx = (test_context_t*)*state;
+
+	// const char* input_filename = "reracefile/RR_0007-convert.rer";
+	// const char* output_filename = "reracefile/RR_0007_racecapture.csv";
+	const char* input_filename = "reracefile/RR_0006.rer";
+	char output_filename[256];
+	snprintf(output_filename, sizeof(output_filename), "reracefile/RR_0006_racecapture_%ld_%u.log",
+			 (long)ctx->timestamp, ctx->counter);
+
+	// Remove output file if exists from previous test
+	Test_HelperFileDelete(output_filename);
+
+	TEST_PRINT_INFO("Converting R1UP file to RaceCapture CSV...\n");
+	TEST_PRINT_INFO("  Input:  %s\n", input_filename);
+	TEST_PRINT_INFO("  Output: %s\n", output_filename);
+
+	r1up_to_rc_result_t result = r1up_to_racecapture_convert(input_filename, output_filename);
+
+	if (result != R1UP_TO_RC_SUCCESS) {
+		TEST_PRINT_ERROR("ERROR: Conversion failed: %s\n", r1up_to_rc_get_error_string(result));
+	} else {
+		TEST_PRINT_INFO("SUCCESS: Conversion completed successfully!\n");
+	}
+
+	assert_int_equal(result, R1UP_TO_RC_SUCCESS);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function to convert a legacy ReRace file to RaceCapture CSV format.
+/// \details Tests the complete conversion pipeline using the r1up_to_racecapture library.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_R1UPToRaceCaptureBulkConvertionForTrackAttackSitune(void** state) {
+	(void)state;  // unused
+
+	const char* input_filenames[] = {
+		"reracefile/trackattack_examples/RR_0009.rer",
+		"reracefile/trackattack_examples/RR_0011.rer",
+		"reracefile/trackattack_examples/RR_0025.rer",
+	};
+
+	for (size_t i = 0; i < sizeof(input_filenames) / sizeof(input_filenames[0]); i++) {
+		TEST_PRINT_INFO("Converting R1UP file to RaceCapture CSV...\n");
+		TEST_PRINT_INFO("  Input:  %s\n", input_filenames[i]);
+		TEST_PRINT_INFO("  Output file name auto generated\n");
+
+		r1up_to_rc_result_t result = r1up_to_racecapture_convert(input_filenames[i], NULL);
+
+		if (result != R1UP_TO_RC_SUCCESS) {
+			TEST_PRINT_ERROR("ERROR: Conversion failed: %s\n", r1up_to_rc_get_error_string(result));
+		} else {
+			TEST_PRINT_INFO("SUCCESS: Conversion completed successfully!\n");
+		}
+
+		assert_int_equal(result, R1UP_TO_RC_SUCCESS);
+	}
+}
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function for streaming body read API.
+/// \details Tests the new streaming functions that allow row-by-row reading with minimal memory footprint.
+/// Compares streaming results with batch mode to verify correctness.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_StreamingBodyRead_Success(void** state) {
+	(void)state;  // unused
+
+	const char* test_filename = "reracefile/RR_0006.rer";
+
+	// First, read file in batch mode to get reference data
+	TEST_PRINT_INFO("Opening file in batch mode for reference...\n");
+	r1up_file_handle_t batch_handle = r1up_file_open(test_filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(batch_handle);
+
+	r1up_file_result_t result = r1up_file_read_body(batch_handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	r1up_file_body_info_t body_info;
+	result = r1up_file_get_body_info(batch_handle, &body_info);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Allocate var_count pointers to hold batch data for each variable
+	ag_fixedpoint_float_t** batch_float_var =
+		(ag_fixedpoint_float_t**)malloc(body_info.variable_count * sizeof(ag_fixedpoint_float_t*));
+	assert_non_null(batch_float_var);
+
+	// Allocate a total_samples length array for each variable
+	for (uint32_t var_idx = 0; var_idx < body_info.variable_count; var_idx++) {
+		// debug check: ensure variable ID to position mapping is consistent
+		assert_int_equal(r1up_file_get_var_position(batch_handle, body_info.variable_ids[var_idx]), var_idx);
+		// allocate buffer for this variable
+		batch_float_var[var_idx] =
+			(ag_fixedpoint_float_t*)malloc(body_info.total_samples * sizeof(ag_fixedpoint_float_t));
+		assert_non_null(batch_float_var[var_idx]);
+		// get variable as float
+		result = r1up_file_get_var_float(batch_handle, body_info.variable_ids[var_idx], batch_float_var[var_idx],
+										 body_info.total_samples);
+		assert_int_equal(result, R1UP_FILE_SUCCESS);
+	}
+
+	// Close batch handle before opening streaming handle to avoid file conflicts
+	TEST_PRINT_INFO("Closing batch mode handle...\n");
+	r1up_file_close(batch_handle);
+	batch_handle = NULL;
+
+	// Now test streaming mode
+	TEST_PRINT_INFO("Opening file in streaming mode...\n");
+	r1up_file_handle_t stream_handle = r1up_file_open(test_filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(stream_handle);
+
+	result = r1up_file_get_body_info(stream_handle, &body_info);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+	// Test r1up_file_stream_body_begin()
+	result = r1up_file_stream_body_begin(stream_handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("Stream initialized successfully\n");
+
+	// Get variable count
+	TEST_PRINT_INFO("Variable count: %u\n", body_info.variable_count);
+	assert_true(body_info.variable_count > 0);
+
+	// Allocate row buffer
+	ag_fixedpoint_float_t* row_buffer =
+		(ag_fixedpoint_float_t*)malloc(body_info.variable_count * sizeof(ag_fixedpoint_float_t));
+	assert_non_null(row_buffer);
+
+	// Read and compare all samples
+	TEST_PRINT_INFO("Reading and comparing all %lu samples...\n", (unsigned long)body_info.total_samples);
+	for (uint32_t i = 0; i < body_info.total_samples; i++) {
+		result = r1up_file_stream_body_next_row(stream_handle, row_buffer, body_info.variable_count);
+		assert_int_equal(result, R1UP_FILE_SUCCESS);
+
+		for (uint32_t var_idx = 0; var_idx < body_info.variable_count; var_idx++) {
+			uint32_t var_id = body_info.variable_ids[var_idx];
+			ag_fixedpoint_float_t batch_value = batch_float_var[var_idx][i];
+			ag_fixedpoint_float_t stream_value = row_buffer[var_idx];
+			if (batch_value != stream_value) {
+				TEST_PRINT_ERROR("  [%u][%u] MISMATCH: batch=%f, stream=%f\n", i, var_id, batch_value, stream_value);
+				assert_true(false);	 // Force failure with detailed message
+			}
+		}
+	}
+	TEST_PRINT_INFO("All %lu samples match! Streaming mode verified.\n", (unsigned long)body_info.total_samples);
+
+	// Test EOF condition - next read should fail
+	result = r1up_file_stream_body_next_row(stream_handle, row_buffer, body_info.variable_count);
+	assert_int_equal(result, R1UP_FILE_ERROR_IO);  // Expected EOF
+	TEST_PRINT_INFO("EOF correctly detected after reading all samples\n");
+
+	// Test r1up_file_stream_body_end()
+	result = r1up_file_stream_body_end(stream_handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+	TEST_PRINT_INFO("Stream cleanup successful\n");
+
+	// Cleanup
+	free(row_buffer);
+	for (uint32_t var_idx = 0; var_idx < body_info.variable_count; var_idx++) {
+		free(batch_float_var[var_idx]);
+	}
+	free(batch_float_var);
+	r1up_file_close(stream_handle);
+	// batch_handle already closed before streaming test
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function for streaming conversion to RaceCapture format.
+/// \details Tests the low-memory streaming converter and compares output with batch mode.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_StreamingConversion_Success(void** state) {
+	test_context_t* ctx = (test_context_t*)*state;
+
+	const char* input_filename = "reracefile/RR_0006.rer";
+	char batch_output[256];
+	char stream_output[256];
+	snprintf(batch_output, sizeof(batch_output), "reracefile/RR_0006_racecapture_1_%ld_%u.log", (long)ctx->timestamp,
+			 ctx->counter);
+	snprintf(stream_output, sizeof(stream_output), "reracefile/RR_0006_racecapture_streaming_1_%ld_%u.log",
+			 (long)ctx->timestamp, ctx->counter);
+
+	// Remove output files if they exist
+	Test_HelperFileDelete(batch_output);
+	Test_HelperFileDelete(stream_output);
+
+	// First, do batch conversion for reference
+	TEST_PRINT_INFO("Running batch mode conversion...\n");
+	r1up_to_rc_result_t result = r1up_to_racecapture_convert(input_filename, batch_output);
+	assert_int_equal(result, R1UP_TO_RC_SUCCESS);
+	TEST_PRINT_INFO("Batch conversion completed\n");
+
+	// Now test streaming conversion
+	TEST_PRINT_INFO("Running streaming mode conversion...\n");
+	result = r1up_to_racecapture_convert_streaming(input_filename, stream_output);
+
+	if (result != R1UP_TO_RC_SUCCESS) {
+		TEST_PRINT_ERROR("ERROR: Streaming conversion failed: %s\n", r1up_to_rc_get_error_string(result));
+	} else {
+		TEST_PRINT_INFO("SUCCESS: Streaming conversion completed!\n");
+	}
+	assert_int_equal(result, R1UP_TO_RC_SUCCESS);
+
+	TEST_PRINT_INFO("\n--- Conversion Results ---\n");
+	TEST_PRINT_INFO("Batch output:     %s\n", batch_output);
+	TEST_PRINT_INFO("Streaming output: %s\n", stream_output);
+
+	// Compare output files byte-by-byte (UTC timestamps now match because they use acquisition date)
+	bool files_equal = Test_HelperCompareFiles(batch_output, stream_output);
+	assert_true(files_equal);
+	TEST_PRINT_INFO("File comparison: PASSED (files are identical)\n");
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function for streaming conversion to RaceCapture format, using file name generation, i.e. passing NULL
+/// to converter and letting it generate output file name based on input file name.
+/// \details Tests the low-memory streaming converter and compares output with batch mode.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_StreamingConversionFileNameGeneration_Success(void** state) {
+	test_context_t* ctx = (test_context_t*)*state;
+
+	const char* input_filename = "reracefile/RR_0006.rer";
+	char batch_output[256];
+	snprintf(batch_output, sizeof(batch_output), "reracefile/RR_0006_racecapture_2_%ld_%u.log", (long)ctx->timestamp,
+			 ctx->counter);
+
+	// Remove output files if they exist
+	Test_HelperFileDelete(batch_output);
+
+	// First, do batch conversion for reference
+	TEST_PRINT_INFO("Running batch mode conversion...\n");
+	r1up_to_rc_result_t result = r1up_to_racecapture_convert(input_filename, batch_output);
+	assert_int_equal(result, R1UP_TO_RC_SUCCESS);
+	TEST_PRINT_INFO("Batch conversion completed\n");
+
+	// Now test streaming conversion
+	TEST_PRINT_INFO("Running streaming mode conversion...\n");
+	// Pass NULL as output filename to let converter generate it based on input filename
+	result = r1up_to_racecapture_convert_streaming(input_filename, NULL);
+
+	if (result != R1UP_TO_RC_SUCCESS) {
+		TEST_PRINT_ERROR("ERROR: Streaming conversion failed: %s\n", r1up_to_rc_get_error_string(result));
+	} else {
+		TEST_PRINT_INFO("SUCCESS: Streaming conversion completed!\n");
+	}
+	assert_int_equal(result, R1UP_TO_RC_SUCCESS);
+
+	TEST_PRINT_INFO("\n--- Conversion Results ---\n");
+	TEST_PRINT_INFO("Batch output:     %s\n", batch_output);
+	// TEST_PRINT_INFO("Streaming output: %s\n", stream_output_gen_filename);
+
+	// Compare output files byte-by-byte
+	TEST_PRINT_INFO("\n--- File Comparison ---\n");
+	// bool files_equal = Test_HelperCompareFiles(batch_output, stream_output_gen_filename);
+	// assert_true(files_equal);  // Test fails if files are different
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function for building RaceCapture file name.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+
+void Test_GetFileName_Success(void** state) {
+	(void)state;  // unused
+
+	const char* test_filename = "RR_0006.rer";
+	const char* test_filename_path = "reracefile/";
+	char full_test_filename[128];
+	snprintf(full_test_filename, sizeof(full_test_filename), "%s%s", test_filename_path, test_filename);
+
+	print_message("Opening file for reading...\n");
+	r1up_file_handle_t handle = r1up_file_open(full_test_filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(handle);
+
+	// Test r1up_file_get_basename() - should return only basename
+	const char* opened_filename = r1up_file_get_basename(handle);
+	assert_non_null(opened_filename);
+	print_message("Basename: %s\n", opened_filename);
+	assert_string_equal(opened_filename, test_filename);
+
+	// Test r1up_file_get_pathname() - should return complete path
+	const char* full_path = r1up_file_get_pathname(handle);
+	assert_non_null(full_path);
+	print_message("Full path: %s\n", full_path);
+	assert_string_equal(full_path, full_test_filename);
+
+	r1up_file_result_t result = r1up_file_close(handle);
+	assert_int_equal(result, R1UP_FILE_SUCCESS);
+}
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function for building RaceCapture file name.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_r1up_to_racecapture_build_filename_Success(void** state) {
+	(void)state;  // unused
+	extern r1up_to_rc_result_t r1up_to_racecapture_build_filename(r1up_file_handle_t handle, char* out_buffer,
+																  size_t buffer_size);
+	char racecapture_filename[R1UP_TO_RC_FILENAME_MAX_LEN];
+	const char* input_filename = "reracefile/RR_0006.rer";
+
+	r1up_file_handle_t r1up_handle = r1up_file_open(input_filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(r1up_handle);
+
+	r1up_to_rc_result_t result =
+		r1up_to_racecapture_build_filename(r1up_handle, racecapture_filename, sizeof(racecapture_filename));
+	assert_int_equal(result, R1UP_TO_RC_SUCCESS);
+
+	TEST_PRINT_INFO("Generated RaceCapture filename: %s\n", racecapture_filename);
+
+	r1up_file_result_t close_result = r1up_file_close(r1up_handle);
+	assert_int_equal(close_result, R1UP_FILE_SUCCESS);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+/// \brief Test function for check rer legacy file.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_LegacyRerFileRead_Success(void** state) {
+	(void)state;  // unused
+
+	const char* input_filename = "reracefile/RR_0006.rer";
+
+	r1up_file_handle_t handle = r1up_file_open(input_filename, R1UP_FILE_MODE_READ_ONLY);
+	assert_non_null(handle);
+
+	r1up_file_result_t res = r1up_file_read_body(handle);
+	assert_int_equal(res, R1UP_FILE_SUCCESS);
+
+	size_t sample_count = r1up_file_get_body_sample_count(handle);
+	TEST_PRINT_INFO("Sample count: %zu\n", sample_count);
+
+	// Get all samples via r1up_file_get_var_float (reference)
+	ag_fixedpoint_float_t* all_data = (ag_fixedpoint_float_t*)malloc(sample_count * sizeof(ag_fixedpoint_float_t));
+	/* Get latitude and longitude (this is the only variable that has a dedicated function to read them) */
+	res = r1up_file_get_gps_latitude_dd(handle, all_data, sample_count);
+	assert_int_equal(res, R1UP_FILE_SUCCESS);
+	res = r1up_file_get_gps_longitude_dd(handle, all_data, sample_count);
+	assert_int_equal(res, R1UP_FILE_SUCCESS);
+	/* Get rpm */
+	res = r1up_file_get_var_float(handle, R1UP_FILE_VAR_ID_RPM, all_data, sample_count);
+	assert_int_equal(res, R1UP_FILE_SUCCESS);
+
+	/* ... do the same for other variables (see below for variable id) */
+
+	// Reading track from legacy file
+	rerace_track_info_t track;
+	r1up_file_result_t track_res = r1up_file_rr_file_get_track_legacy(handle, &track);
+	assert_int_equal(track_res, R1UP_FILE_SUCCESS);
+	assert_string_equal(track.track_name, "P-Mare");
+	assert_int_equal(track.intermediate_line_count, 1);
+	assert_true(track.timing_lines[1].point_a.is_valid);
+	assert_false(track.timing_lines[2].point_a.is_valid);
+
+	// Get the lap count from the file
+	uint32_t lap_count = 0U;
+	r1up_file_get_lap_count(handle, &lap_count);
+	TEST_PRINT_INFO("Lap count: %u\n", lap_count);
+
+	// reading session payload: the session must be initialized (it also initializes ag_mal, matched by the deinit
+	// below)
+	rerace_session_t session;
+	rerace_session_result_t session_res = rerace_session_init(&session, &track);
+	assert_int_equal(session_res, RERACE_SESSION_SUCCESS);
+	r1up_file_result_t session_read_res = r1up_file_rr_file_get_session_legacy(handle, &session);
+	assert_int_equal(session_read_res, R1UP_FILE_SUCCESS);
+	// r1up_file_get_lap_count() returns 0 for legacy files (no lap table), the laps are only in the session payload
+	assert_int_equal(session.lap_count, 8);
+	assert_non_null(session.laps_head);
+	assert_non_null(session.laps_tail);
+	assert_true(fabsf(session.laps_head->lap.lap_times[0] - 48.7706f) < 0.001f);
+	assert_true(fabsf(session.best_lap.lap_times[0] - 47.2998f) < 0.001f);
+	assert_int_equal(session.laps_head->lap.file_pointer, 0);
+	session_res = rerace_session_deinit(&session);
+	assert_int_equal(session_res, RERACE_SESSION_SUCCESS);
+
+	// free allocated buffer after use
+	free(all_data);
+
+	r1up_file_result_t close_result = r1up_file_close(handle);
+	assert_int_equal(close_result, R1UP_FILE_SUCCESS);
+}
+
+// -------------------------------------------------------------------------------------------------------------------
+/// \brief Test function for the ReRace session init, lap list management and deinit.
+/// \param state
+/// This pointer is shared between setup, test case and teardown function to store user-defined data.
+// --------------------------------------------------------------------------------------------------------------------
+void Test_ReRaceSession_InitParseDeinit_Success(void** state) {
+	(void)state;  // unused
+
+	rerace_track_info_t track;
+	memset(&track, 0, sizeof(track));
+	rerace_session_t session;
+	const uint32_t init_count = ag_mal_get_init_count();
+
+	/* Invalid parameters */
+	assert_int_equal(rerace_session_init(NULL, &track), RERACE_SESSION_ERROR_INVALID_PARAM);
+	assert_int_equal(rerace_session_init(&session, NULL), RERACE_SESSION_ERROR_INVALID_PARAM);
+	assert_int_equal(rerace_session_deinit(NULL), RERACE_SESSION_ERROR_INVALID_PARAM);
+	assert_int_equal(ag_mal_get_init_count(), init_count);
+
+	/* Init: empty list, ag_mal initialized once */
+	assert_int_equal(rerace_session_init(&session, &track), RERACE_SESSION_SUCCESS);
+	assert_int_equal(ag_mal_get_init_count(), init_count + 1U);
+	assert_int_equal(session.lap_count, 0);
+	assert_null(session.laps_head);
+	assert_null(session.laps_tail);
+	assert_int_equal(rerace_session_parse_payload(NULL, 1U, &session), RERACE_SESSION_ERROR_INVALID_PARAM);
+
+	/* Truncated payload: error and no partial state */
+	const uint8_t truncated_payload[] = {3U};
+	assert_int_equal(rerace_session_parse_payload(truncated_payload, sizeof(truncated_payload), &session),
+					 RERACE_SESSION_ERROR_CORRUPTED);
+	assert_int_equal(session.lap_count, 0);
+	assert_null(session.laps_head);
+	assert_null(session.laps_tail);
+
+	/* Parse a payload with 3 laps, twice: the second call replaces the list.
+	 * Size: lap count + 3 * (lap times + rpm + speed) + best lap + best overall + 2 file pointers (first lap has none)
+	 */
+	uint8_t payload[1U + 3U * (RERACE_SESSION_LAP_TIMES_ARRAY_SIZE * sizeof(float) + 4U) +
+					2U * RERACE_SESSION_LAP_TIMES_ARRAY_SIZE * sizeof(float) + 2U * sizeof(uint32_t)];
+	memset(payload, 0, sizeof(payload));
+	payload[0] = 3U;
+	for (int i = 0; i < 2; i++) {
+		assert_int_equal(rerace_session_parse_payload(payload, sizeof(payload), &session), RERACE_SESSION_SUCCESS);
+		assert_int_equal(session.lap_count, 3);
+		assert_non_null(session.laps_head);
+		assert_non_null(session.laps_tail);
+		assert_null(session.laps_head->previous);
+		assert_null(session.laps_tail->next);
+		assert_ptr_equal(session.laps_head->next->next, session.laps_tail);
+		assert_ptr_equal(session.laps_tail->previous->previous, session.laps_head);
+	}
+
+	/* Deinit frees all the laps and releases ag_mal */
+	assert_int_equal(rerace_session_deinit(&session), RERACE_SESSION_SUCCESS);
+	assert_int_equal(ag_mal_get_init_count(), init_count);
+}
+
+// -------------------------------------------------------------------------------------------------------------------
+/// \brief The main function of the unit test responsible for setting up CMocka and executing the available test
+/// cases.
+///
+/// \param argc
+/// The number of arguments passed to the program.
+/// \param argv
+/// Array of strings with each string being one of the arguments that was passed to the program.
+/// \return
+/// 0 on success, or the number of failed tests.
+// --------------------------------------------------------------------------------------------------------------------
+int main(int argc, const char* argv[]) {
+	// Clean up all .log files from previous test runs before starting
+	printf("Cleaning previous test output files...\n");
+#ifdef _WIN32
+	system("del /Q reracefile\\*.log 2>nul");
+#else
+	system("rm -f reracefile/*.log");
+#endif
+	printf("Cleanup complete.\n\n");
+
+	const struct CMUnitTest tests[] = {
+		/**
+		 * Race1UP file test
+		 */
+		cmocka_unit_test_setup_teardown(Test_OpenAndClose_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_OpenWithNullFilename_AutoGenerate_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_OpenAndCloseHeaderAndFile_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_WriteAndReadBlockID_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_OpenSetBlockPayloadCloseFile_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_CustomBlockSet_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_WriteVariablesInBody_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_WriteVariablesInBodyAndGetBodyInfo_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_WriteAndReadVariablesInBody_RawFunction_Success, Test_Setup,
+										Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_WriteAndReadVariablesInBody_GetFloatFunction_Success, Test_Setup,
+										Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_WriteAndReadSineVariablesInBody_GetFloatFunction_Success, Test_Setup,
+										Test_Teardown),
+		/* Get data by lap */
+		cmocka_unit_test_setup_teardown(Test_WriteSineVariablesInBody_R1upFileMarkLap_Success, Test_Setup,
+										Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_GetVarFloatByLap_Success, Test_Setup, Test_Teardown),
+
+		/**
+		 * ReRace legacy file tests
+		 */
+		cmocka_unit_test_setup_teardown(Test_LegacyReRaceFileRead_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_LegacyReRaceFileRead_PrintVar_Success, Test_Setup, Test_Teardown),
+
+		/* Test ReRace to RaceCapture CSV conversion */
+		cmocka_unit_test_setup_teardown(Test_R1UPToRaceCaptureConversion_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_R1UPToRaceCaptureBulkConvertionForTrackAttackSitune, Test_Setup,
+										Test_Teardown),
+
+		/* Test streaming mode API */
+		cmocka_unit_test_setup_teardown(Test_StreamingBodyRead_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_StreamingConversion_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_StreamingConversionFileNameGeneration_Success, Test_Setup, Test_Teardown),
+
+		/* Test to build RaceCapture file name */
+		cmocka_unit_test_setup_teardown(Test_GetFileName_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_r1up_to_racecapture_build_filename_Success, Test_Setup, Test_Teardown),
+
+		/* Test legacy rer file */
+		cmocka_unit_test_setup_teardown(Test_LegacyRerFileRead_Success, Test_Setup, Test_Teardown),
+		cmocka_unit_test_setup_teardown(Test_ReRaceSession_InitParseDeinit_Success, Test_Setup, Test_Teardown),
+	};
+
+#ifdef __STDC_VERSION__
+	// Check and print C standard version
+	// __STDC_VERSION__ should be 201710L for C17
+	// __STDC_VERSION__ should be 201112L for C11
+	// __STDC_VERSION__ should be 199901L for C99
+	// __STDC_VERSION__ should be 199409L for C94
+	// __STDC_VERSION__ should be 199000L for C90 with some extensions
+	printf("__STDC_VERSION__ = %ld\n", (long)__STDC_VERSION__);
+#else
+	puts("__STDC_VERSION__ non definita (probabile C90/gnu90).");
+#endif
+	return cmocka_run_group_tests(tests, NULL, NULL);
+}

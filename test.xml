@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<unit_conf format="V01_00_00">
+
+<!--  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Report
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+<report>
+	<filename>reports/UnitTest.html</filename>
+	<metadata>
+		<entry name="Unit Name">INVALID</entry>
+	</metadata>
+</report>
+
+<!--  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Configuration of the unit test framework
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+<framework type="cmocka + gcov">
+	<working_dir>.</working_dir>
+	<build_cmd>make gcov -j12</build_cmd>
+</framework>
+
+<!--  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Minimum code coverage definition.
+If it is not possible to achieve the limits defined by WI0040,
+change this to the highest value achievable and change the justification
+to give a technical reason, why it cannot be increased.
+If code coverage cannot be measured at all, change value to 0
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+<min_coverage c0="97" c1="Unsupported" c1p="95">As defined by PDP-AS WI0040 V07.00</min_coverage>
+</unit_conf>

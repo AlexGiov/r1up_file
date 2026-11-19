@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "ask_toolchain",
+            "includePath": [
+                "${workspaceFolder}/src/**"
+            ],
+            // Must mirror the flags used by the makefile (CFLAGS / PROJECT_DEFINES)
+            "defines": [
+                "UNIT_TESTING",
+                "UNIT_TESTING_CMOCKA",
+                "__DEBUG__",
+                "DEBUG",
+                "generic",
+                "_WIN32",
+                "USE_LTYPES_PROJECT_WORKAROUNDS",
+                "Sleep=OsekSleep"
+            ],
+            "compilerPath": "C:/devbin/mingw/mingw64/8.1.0/bin/gcc.exe",
+            "cStandard": "gnu99",
+            "intelliSenseMode": "windows-gcc-x64"
+        }
+    ],
+    "version": 4
+}

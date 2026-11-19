@@ -1,0 +1,147 @@
+// --------------------------------------------------------------------------------------------------------------------
+/// \file ag_mal_cfg.h
+///
+/// \brief Memory Abstraction Layer Configuration Header
+///
+/// This file contains all configuration options for the Memory Abstraction Layer (MAL).
+/// It allows switching between different memory backends and enabling/disabling various features
+/// such as memory tracking, statistics collection, thread safety, and bounds checking.
+///
+/// \author ASK Industries GmbH
+/// \version 1.0.0
+/// \date 2025-09-28
+///
+/// Copyright (c) 2025, ASK Industries GmbH, Niederwinkling.
+/// All Rights Reserved.
+// --------------------------------------------------------------------------------------------------------------------
+
+#ifndef AG_MAL_CFG_H
+#define AG_MAL_CFG_H
+
+// ====================================================================================================================
+//  BACKEND SELECTION
+// ====================================================================================================================
+
+/// \defgroup MAL_Backend Memory Backend Selection
+/// \{
+
+/// Standard C malloc/free backend identifier
+#define AG_MAL_BACKEND_STD_C 0
+
+/// FreeRTOS pvPortMalloc/vPortFree backend identifier
+#define AG_MAL_BACKEND_FREERTOS 1
+
+/// \brief Select the memory backend
+///
+/// This macro determines which underlying memory allocation system to use.
+/// Available options:
+/// - \c AG_MAL_BACKEND_STD_C: Use standard C malloc/free functions
+/// - \c AG_MAL_BACKEND_FREERTOS: Use FreeRTOS pvPortMalloc/vPortFree functions
+///
+/// \note Change this value to switch between different memory backends
+#ifndef AG_MAL_BACKEND
+#define AG_MAL_BACKEND AG_MAL_BACKEND_STD_C
+#endif
+
+/// \}
+
+// ====================================================================================================================
+//  FEATURE CONFIGURATION
+// ====================================================================================================================
+
+/// \defgroup MAL_Features Feature Enable/Disable Flags
+/// \{
+
+/// \brief Enable allocation tracking for debugging
+///
+/// When enabled (1), the MAL will track all allocations in a linked list,
+/// allowing for memory leak detection and detailed reporting.
+/// When disabled (0), allocations are not tracked, reducing memory overhead.
+///
+/// \note Disabling this will also disable ag_mal_check_leaks() and ag_mal_print_report()
+/// \note Normally in production builds, tracking is disabled to save resources, while in debug builds it is enabled for
+/// diagnostics.
+#define AG_MAL_ENABLE_TRACKING 1
+
+/// \brief Enable memory usage statistics collection
+///
+/// When enabled (1), the MAL collects detailed statistics about memory usage
+/// including total allocated bytes, peak usage, allocation counts, etc.
+/// When disabled (0), no statistics are collected, reducing processing overhead.
+#define AG_MAL_ENABLE_STATISTICS 1
+
+/// \brief Enable thread-safe operations
+///
+/// When enabled (1), all MAL operations are protected by mutexes for thread safety.
+/// When disabled (0), no thread synchronization is performed.
+///
+/// \note In FreeRTOS backend, uses semaphores. In standard C, easily extensible with pthread mutexes.
+#define AG_MAL_ENABLE_THREAD_SAFE 1
+
+/// \brief Enable buffer overflow detection
+///
+/// When enabled (1), guard bytes are placed before and after each allocation
+/// to detect buffer overflows and underflows.
+/// When disabled (0), no bounds checking is performed, reducing memory overhead.
+///
+/// \note Normally in production builds, bounds checking is disabled for performance, while in debug builds it is
+/// enabled to catch memory corruption issues.
+#define AG_MAL_ENABLE_BOUNDS_CHECK 1
+
+/// \}
+
+// ====================================================================================================================
+//  CONFIGURATION PARAMETERS
+// ====================================================================================================================
+
+/// \defgroup MAL_Parameters Configuration Parameters
+/// \{
+
+/// \brief Maximum number of allocations that can be tracked simultaneously
+///
+/// This defines the upper limit for concurrent tracked allocations.
+/// Increase this value for applications with many simultaneous allocations.
+///
+/// \note Only used when AG_MAL_ENABLE_TRACKING is enabled
+#define AG_MAL_MAX_TRACKED_ALLOCS 256
+
+/// \brief Size of guard bytes for overflow detection (in bytes)
+///
+/// Guard bytes are placed before and after each allocation to detect corruption.
+/// Must be a multiple of sizeof(uint32_t) for proper alignment.
+///
+/// \note Only used when AG_MAL_ENABLE_BOUNDS_CHECK is enabled
+#define AG_MAL_GUARD_SIZE 4
+
+/// \brief Pattern used to fill guard bytes
+///
+/// This pattern is written to guard bytes and checked during validation.
+/// Should be an easily recognizable pattern that's unlikely to occur naturally.
+#define AG_MAL_GUARD_PATTERN 0xDEADBEEF
+
+/// \}
+
+// ====================================================================================================================
+//  DEBUG CONFIGURATION
+// ====================================================================================================================
+
+/// \defgroup MAL_Debug Debug Configuration
+/// \{
+
+/// \brief Enable debug mode based on DEBUG preprocessor definition
+///
+/// When DEBUG is defined, enables additional debug features such as:
+/// - Detailed memory reports with file/line information
+/// - Verbose error messages and logging
+/// - Additional validation checks
+///
+/// In release builds (DEBUG not defined), debug features are disabled for performance.
+#ifdef DEBUG
+#define AG_MAL_DEBUG_ENABLED 1
+#else
+#define AG_MAL_DEBUG_ENABLED 0
+#endif
+
+/// \}
+
+#endif /* AG_MAL_CFG_H */

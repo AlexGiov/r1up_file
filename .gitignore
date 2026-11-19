@@ -1,0 +1,59 @@
+# Directory di compilazione
+build/
+cmake-build-*/
+Debug/
+Release/
+
+# File oggetto e dipendenze generate
+*.o
+*.obj
+*.lo
+*.d
+
+# Librerie generate
+# Adatta queste regole se devi versionare librerie precompilate.
+*.a
+*.lib
+*.la
+*.so
+*.so.*
+*.dylib
+*.dll
+
+# Eseguibili e informazioni di debug
+*.exe
+*.out
+*.pdb
+*.ilk
+*.idb
+*.dSYM/
+
+# File generati da CMake e Ninja
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+.ninja_deps
+.ninja_log
+
+# Coverage e profiling
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+gmon.out
+
+# SVN folders exclusion
+.svn/
+
+# Firmware embedded: rimuovi # solo per gli output generati
+# *.elf
+# *.axf
+# *.hex
+# *.bin
+# *.map
+# *.lst
+# *.su

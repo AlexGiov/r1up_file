@@ -1,0 +1,44 @@
+{
+    "files.associations": {
+        "cmocka.h": "c",
+        "setjmp.h": "c",
+        "stddef.h": "c",
+        "stdarg.h": "c",
+        "*.template": "c",
+        "fsal_cfg.h": "c",
+        "stdbool.h": "c",
+        "r1up_file_cfg.h": "c",
+        "fsal.h": "c",
+        "r1up_file.h": "c",
+        "type_traits": "c",
+        "typeinfo": "c"
+    },
+    // Overrides the user-level "disabled" so cpptools provides outline/go-to-definition
+    "C_Cpp.intelliSenseEngine": "default",
+    // Keep IntelliSense/go-to-definition on src/ only: dist/ and packaging/ hold stale copies of r1up_file.h/.c
+    "C_Cpp.files.exclude": {
+        "**/.svn": true,
+        "dist/**": true,
+        "packaging/**": true,
+        "obj/**": true,
+        "build/**": true
+    },
+    "search.exclude": {
+        "**/.svn": true,
+        "dist/**": true,
+        "packaging/**": true,
+        "obj/**": true
+    },
+    // --- AlexGiov: added for clang-format ---
+    "[c]": {
+        "editor.defaultFormatter": "xaver.clang-format"
+    },
+    "[cpp]": {
+        "editor.defaultFormatter": "xaver.clang-format"
+    },
+    "editor.formatOnSave": true,
+    // Clang-format configuration
+    "clang-format.executable": "C:\\Program Files\\LLVM\\bin\\clang-format.exe",
+    "clang-format.style": "file",
+    "clang-format.fallbackStyle": "LLVM"
+}

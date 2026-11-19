@@ -1,0 +1,23 @@
+SIMULATION,"0" [0,1] >> mandatory
+VendorID,"23874682" [Matrix, AIM, Motec, ...] >> mandatory
+vendor model,"Solo2" [solo2dl, Mychorn 5s, ...]  >> optional (empty to don't specify)
+Vehicle type,"SIM" [list provided]  >> ONLY if "simulation" is 1
+Vehicle Brand,"Lola" [list provided]  >> ONLY if "simulation" is 1
+vehicle model, "B05/40" [list provided]  >> ONLY if "simulation" is 1
+vehicle version, "LMP2" [list provided]  >> ONLY if "simulation" is 1
+vehicle year, "2005" [list provided]  >> ONLY if "simulation" is 1
+Tyres brand, "SLICK" [list provided]  >> ONLY if "simulation" is 1
+Tyres model, "soft" [list provided]  >> ONLY if "simulation" is 1
+Condition,"Dry" [Dry,Wet,Snow]  >> ONLY if "simulation" is 1
+Date recording,"023-12-29T15:24:44Z" [format dd/mm/yyyy] >> mandatory
+Session Note,"SIM name : open text for the session, a bit of things we can add"  >> optional (empty to don't specify)
+
+Time,Speed,GPS_Latitude,GPS_Longitude,gforce(Y),gforce(X),gforce(z),LeanAngle(),altitude,brake,throttle,DriftAngle,Gear,RPM
+"sec","km/h","dd","dd",g,g,g,dd,dd,m,bar,%,dd,n
+
+0.007,265.99,43.96187236,12.68396213,0.0,0.0,0.0,0.0
+0.0209,266.16,43.96186509,12.68395755,0.0,0.0,0.0,0.0
+0.0278,266.25,43.96186146,12.68395526,0.0,0.0,0.0,0.0
+0.0348,266.37,43.961856,12.68395183,0.0,0.0,0.0,0.0
+0.0421,266.45,43.96185237,12.68394953,0.0,0.0,0.0,0.0
+

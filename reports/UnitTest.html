@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="de">
+<!--
+This is an html that contains data in the form of pure xml section (html/body/script[@id="xmlData"]/data). 
+In order to be parseable by any XML parser, it is formatted in a way that satisfies both html and xml.
+For some reason unknown to me, there is a lot of confusion about xml conformant html. The old xhtml declaration
+is nowadays completely ignored by browsers. They will always parse as html5.
+So the only way to pull this off is by a couple of nasty tricks:
+* xml section is hidden to the html parser by declaring it as type="text/xmldata"
+* xml section is then accessed as text and parsed by the javascript code
+* The javascript code must be embedded in CDATA section, for beeing readable by xml parsers.
+  At the same time the CDATA declaration must be commented out, to be hidden from the html/javascript parser.
+-->
+<head>
+<meta charset="utf-8"/>
+<title>Unit Test Report</title>
+<style> 
+body {
+	font-family: Arial, helvetica, sans-serif;
+}
+
+.heading-1,.heading-1-1,.heading-1-1-1,.heading-1-1-1-1,.heading-1-1-1-1-1,.heading-1-1-1-1-1-1 {
+	color: #0E4A90;
+	text-shadow: 1px 1px 0.01em white;
+}
+
+.heading-1 {
+	font-size: 30px;
+	font-weight: bold;
+	line-height: 50px;
+	border-bottom: 4px solid #E1F0FF;
+	margin: 0 0 10px 0;
+}
+
+.heading-1-1 {
+	font-size: 23px;
+	font-weight: bold;
+	background-color: #E1F0FF;
+	padding: 8px 14px 8px 14px;
+	margin: 20px 0 10px 0;
+	border-radius: 5px;
+	-moz-border-radius: 5px;
+	-webkit-border-radius: 5px;
+}
+
+.heading-1-1 span {
+	display: inline;
+	line-height: normal;
+}
+
+.heading-1-1-1 {
+	font-size: 23px;
+	font-weight: bold;
+	margin: 20px 0 10px 0;
+}
+
+.heading-1-1-1 span {
+	display: inline;
+	line-height: normal;
+}
+
+.heading-1-1-1-1 {
+	font-size: 15px;
+	font-weight: bold;
+	line-height: normal;
+	padding: 0px;
+	margin: 20px 0 10px 0;
+}
+
+.heading-1-1-1-1-1 {
+	font-size: 13px;
+	font-weight: bold;
+	line-height: normal;
+	color: black;
+	padding: 0px;
+	margin: 20px 0 10px 0;
+}
+
+.tocDivision {
+    background: #f6f6f6;
+    padding: 20px 15px;
+    border-radius: 5px;
+    -moz-border-radius: 5px;
+    -webkit-border-radius: 5px;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:link {
+    color: #369;
+}
+
+a:visited {
+    color: #369; 
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+ul {
+    margin: 1em 0 !important;
+    padding: 0 0 0 2.5em !important;
+    list-style-type: disc !important;
+}
+
+.polarion-wiki-table {
+	margin: auto;
+	empty-cells: show;
+	width: 90%;
+	font-size: 100%;
+	text-align: left;
+	border-collapse: collapse;
+	border: 1px solid #AAAAAA;
+}
+
+.polarion-wiki-table-td {
+	padding: 5px;
+	border: 1px solid #AAAAAA;
+	font-size: 15px;
+	line-height: 15px;
+	text-align: left;
+	vertical-align: top;
+	white-space: nowrap;
+}
+
+.polarion-wiki-table-th {
+	font-weight: bold;
+	font-size: 15px;
+	line-height: 15px;
+	border: 1px solid #AAAAAA;
+	padding: 5px;
+	background-color: #F0F0F0;
+	text-align: left;
+	vertical-align: top;
+	white-space: nowrap;
+}
+
+.polarion-wiki-table-100 {
+	margin: auto;
+	empty-cells: show;
+	width: 100%;
+	font-size: 100%;
+	text-align: left;
+	border-collapse: collapse;
+	border: 1px solid #AAAAAA;
+}
+
+div.info {
+	background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAABGdBTUEAALGPC/xhBQAAAAJiS0dEAP+Hj8y/AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AYECQIFDK48QQAAAXVJREFUKM9FzzFLlWEAxfHf85qBEVE2ZGBJIiYNIReHQIeWqHzeay53bbEP0DeIloaI5ja1wcEKLvU+0qaBBdmkgUq05B1siYKg6fU+DRfqbH/4cw4nUKrEwqgFdwwLOtqW8te17qw1oVQhLrtr1UuHgiEtLc+P3avrbg4QPxsM16oOsV83HRFHfPIlzVDEIi4b1Kg6xEkfrDArfXPFaFxBHIu5vMBNxGcxx1yeJyJejTlOFxasVp1SPzzx0WJ1OCuJ0o5kPsRdD9ILmDuRz+RT+WTYr34D5Y38qDDssIdHje6rvGvLZI+b8n6YKBRCE1Ha7Is9syd0IRQODL1BwtFx/zInMZH3Cm0tSlCA/L/mvo3CklZzpOopNYSaKIlTbmv3jf90KT8eX0x/4lh+6LRfLo5/TwflOe+8TU8DZX9eN+pW2inPCsjVjzjltW3NVBdNuU4z1m3HpJEH8kBuxGTLpqaa0NsjTpt3PVxW5D0b2ul9781fk96O5YA11rQAAAAASUVORK5CYII=");
+	background-repeat: no-repeat;
+	float:right;
+	width:18px;
+	height:16px;
+	border: 0px;
+	padding: 0px;
+	margin: 0px;
+}
+
+
+div.expand {
+	background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAMCAYAAABvEu28AAAABmJLR0QAAAAAAAD5Q7t/AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AYIDRUi4fga2AAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAABf0lEQVQoz5WTvU4bURBGz1zvNqFyHyR4AFc2jeWCQIH9CtDZiSk2ECAQyQ/gLogfCcSujYR4DVuKvRRO4wcBWbKgCRa7OyksLiYGRKa7c0dHM983Iw9RrABOyhAniqrynjDGIAJxnIzfAFEc43kew+HwXRARIQy7NBtNRGSc+3M/0s2NrwwGAxzHodk858PMzJugdqtFEPgArBSLVKtVjKoyNz8PQBRFrK9Xub27Q4xMAZyUodP5ZSEAsx9nSVQxrutSq9XIZDIAjEYjvlTK3FzfPIM5KUM3vOL05MTmVtfWWCkV0USRSbHr9Tr9ft8W+kGDdDqNiNBut/DPzuxfufKZUqlkzbEgADHC8dERV2EIgOu6+H5AJ+xyeXFhITvfd8nn8yRJ8mTAJOjRkf39n/zu9V4U2vM8lpaXre12Hf4tVFV+7O2RW1iYgpTLFRY/LU1BXuxoUtyDw0M75retbQqFwqsL+yroccygEZDLZslmc880+S+QPR1VNHn7dP4CfdCpQSPmllQAAAAASUVORK5CYII=");
+	background-repeat: no-repeat;
+	float:right;
+	width:18px;
+	height:16px;
+	border: 0px;
+	padding: 0px;
+	margin: 0px;
+}
+
+
+
+</style>
+</head>
+
+<body>
+
+<script id="xmlData" type="text/xmldata">
+<report_data format="V01_00_00">
+	<metadata>
+		<entry name="Unit Name">INVALID</entry>
+		<entry name="Framework">cmocka + gcov</entry>
+		<entry name="Date">15.11.2026</entry>
+	</metadata>
+	<min_coverage c0="97" c1="Unsupported" c1p="95">As defined by PDP-AS WI0040 V07.00</min_coverage>
+	<summary>
+		<result>failed_build</result>
+		<testcases total="0" passed="0" failed="0"/>
+		<coverage lines_total="0" lines_exec="0" branches_c1_total="0" branches_c1_exec="0" branches_c1p_total="0" branches_c1p_exec="0" c0="100.00" c1="100.00" c1p="100.00"/>
+	</summary>
+	<testcases/>
+	<files/>
+	<output><![CDATA[make clean_gcov
+make[1]: Entering directory `C:/Users/AlexGiov/ag/atlas/race1up/research-development/active-projects/_shared-resources/software-libraries/r1up_file/trunk/src/test/unit'
+===============================================================================
+Clean all (11:52) ...
+===============================================================================
+===============================================================================
+Clean all done (11:52)
+===============================================================================
+make[1]: Leaving directory `C:/Users/AlexGiov/ag/atlas/race1up/research-development/active-projects/_shared-resources/software-libraries/r1up_file/trunk/src/test/unit'
+make annotate_gcov
+make[1]: Entering directory `C:/Users/AlexGiov/ag/atlas/race1up/research-development/active-projects/_shared-resources/software-libraries/r1up_file/trunk/src/test/unit'
+===============================================================================
+Build bin/mut_gcov.exe annotate_gcov (11:52) ...
+===============================================================================
+checking for double header files
+compiling obj/gcov/main.c.obj
+compiling src/main.c
+In file included from src/lib/r1up_to_racecapture/r1up_to_racecapture.h:55,
+                 from src/main.c:40:
+src/lib/r1up_to_racecapture/r1up_to_racecapture_cfg.h:97:1: warning: multi-line comment [-Wcomment]
+ // #define R1UP_TO_RC_MAPPING_TABLE(ENTRY)                                                                     \
+ ^
+src/lib/r1up_to_racecapture/r1up_to_racecapture_cfg.h:130:1: warning: multi-line comment [-Wcomment]
+ // #define R1UP_TO_RC_MAPPING_TABLE(ENTRY)                                                                     \
+ ^
+src/main.c: In function 'Test_LegacyRerFileRead_Success':
+src/main.c:1828:18: warning: unknown conversion type character 'z' in format [-Wformat=]
+  TEST_PRINT_INFO("Sample count: %zu\n", sample_count);
+                  ^~~~~~~~~~~~~~~~~~~~~
+src/main.c:126:60: note: in definition of macro 'TEST_PRINT_INFO'
+   if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_INFO) print_message(__VA_ARGS__); \
+                                                            ^~~~~~~~~~~
+src/main.c:1828:18: warning: too many arguments for format [-Wformat-extra-args]
+  TEST_PRINT_INFO("Sample count: %zu\n", sample_count);
+                  ^~~~~~~~~~~~~~~~~~~~~
+src/main.c:126:60: note: in definition of macro 'TEST_PRINT_INFO'
+   if (TEST_LOG_LEVEL >= TEST_LOG_LEVEL_INFO) print_message(__VA_ARGS__); \
+                                                            ^~~~~~~~~~~
+At top level:
+src/main.c:1370:13: warning: 'Test_WriteAndReadBlockID_Success' defined but not used [-Wunused-function]
+ static void Test_WriteAndReadBlockID_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:1333:13: warning: 'Test_OpenWithNullFilename_AutoGenerate_Success' defined but not used [-Wunused-function]
+ static void Test_OpenWithNullFilename_AutoGenerate_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:1307:13: warning: 'Test_OpenAndClose_Success' defined but not used [-Wunused-function]
+ static void Test_OpenAndClose_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:1200:13: warning: 'Test_GetVarFloatByLap_Success' defined but not used [-Wunused-function]
+ static void Test_GetVarFloatByLap_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:1087:13: warning: 'Test_WriteSineVariablesInBody_R1upFileMarkLap_Success' defined but not used [-Wunused-function]
+ static void Test_WriteSineVariablesInBody_R1upFileMarkLap_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:1009:13: warning: 'Test_WriteAndReadSineVariablesInBody_GetFloatFunction_Success' defined but not used [-Wunused-function]
+ static void Test_WriteAndReadSineVariablesInBody_GetFloatFunction_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:927:13: warning: 'Test_WriteAndReadVariablesInBody_GetFloatFunction_Success' defined but not used [-Wunused-function]
+ static void Test_WriteAndReadVariablesInBody_GetFloatFunction_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:862:13: warning: 'Test_WriteAndReadVariablesInBody_RawFunction_Success' defined but not used [-Wunused-function]
+ static void Test_WriteAndReadVariablesInBody_RawFunction_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:822:13: warning: 'Test_WriteVariablesInBody_Success' defined but not used [-Wunused-function]
+ static void Test_WriteVariablesInBody_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:762:13: warning: 'Test_WriteVariablesInBodyAndGetBodyInfo_Success' defined but not used [-Wunused-function]
+ static void Test_WriteVariablesInBodyAndGetBodyInfo_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:702:13: warning: 'Test_OpenSetBlockPayloadCloseFile_Success' defined but not used [-Wunused-function]
+ static void Test_OpenSetBlockPayloadCloseFile_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:659:13: warning: 'Test_CustomBlockSet_Success' defined but not used [-Wunused-function]
+ static void Test_CustomBlockSet_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/main.c:635:13: warning: 'Test_OpenAndCloseHeaderAndFile_Success' defined but not used [-Wunused-function]
+ static void Test_OpenAndCloseHeaderAndFile_Success(void** state) {
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+compiling obj/gcov/lib/ag_fixedpoint/src/ag_fixedpoint.c.obj
+compiling src/lib/ag_fixedpoint/src/ag_fixedpoint.c
+compiling obj/gcov/lib/ag_fsal/src/ag_fsal.c.obj
+compiling src/lib/ag_fsal/src/ag_fsal.c
+compiling obj/gcov/lib/ag_mal/src/ag_mal.c.obj
+compiling src/lib/ag_mal/src/ag_mal.c
+src/lib/ag_mal/src/ag_mal.c: In function 'ag_mal_validate_block':
+src/lib/ag_mal/src/ag_mal.c:271:39: warning: cast from pointer to integer of different size [-Wpointer-to-int-cast]
+  uint32_t* guard_back = (uint32_t*)((((unsigned int)((char*)block->user_ptr + block->size))
+                                       ^
+src/lib/ag_mal/src/ag_mal.c: In function 'ag_mal_alloc_debug':
+src/lib/ag_mal/src/ag_mal.c:448:39: warning: cast from pointer to integer of different size [-Wpointer-to-int-cast]
+  uint32_t* guard_back = (uint32_t*)((((unsigned int)((char*)block->user_ptr + size))
+                                       ^
+compiling obj/gcov/lib/ag_string/ag_string.c.obj
+compiling src/lib/ag_string/ag_string.c
+compiling obj/gcov/lib/ag_time/ag_time.c.obj
+compiling src/lib/ag_time/ag_time.c
+compiling obj/gcov/lib/cmocka/src/cmocka.c.obj
+compiling src/lib/cmocka/src/cmocka.c
+compiling obj/gcov/lib/r1up_to_racecapture/r1up_to_racecapture.c.obj
+compiling src/lib/r1up_to_racecapture/r1up_to_racecapture.c
+In file included from src/lib/r1up_to_racecapture/r1up_to_racecapture.h:55,
+                 from src/lib/r1up_to_racecapture/r1up_to_racecapture.c:17:
+src/lib/r1up_to_racecapture/r1up_to_racecapture_cfg.h:97:1: warning: multi-line comment [-Wcomment]
+ // #define R1UP_TO_RC_MAPPING_TABLE(ENTRY)                                                                     \
+ ^
+src/lib/r1up_to_racecapture/r1up_to_racecapture_cfg.h:130:1: warning: multi-line comment [-Wcomment]
+ // #define R1UP_TO_RC_MAPPING_TABLE(ENTRY)                                                                     \
+ ^
+compiling obj/gcov/lib/racecapture_file/racecapture_file.c.obj
+compiling src/lib/racecapture_file/racecapture_file.c
+compiling obj/gcov/lib/rerace_track/rerace_track.c.obj
+compiling src/lib/rerace_track/rerace_track.c
+compiling obj/gcov/mut/src/r1up_file.c.obj
+compiling src/mut/src/r1up_file.c
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+src/mut/src/r1up_file.c:221:51: warning: initializer-string for array of chars is too long
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+                                                   ^
+src/mut/src/r1up_file.c:177:4: note: in definition of macro 'R1UP_FILE_BLOCKS_AS_STRINGS'
+   #id_symbol "________________________________________________________________";
+    ^~~~~~~~~
+src/mut/src/r1up_file.c:221:1: note: in expansion of macro 'R1UP_FILE_BLOCKS_TABLE'
+ R1UP_FILE_BLOCKS_TABLE(R1UP_FILE_BLOCKS_AS_STRINGS)
+ ^~~~~~~~~~~~~~~~~~~~~~
+linking bin/mut_gcov.exe
+===============================================================================
+Build bin/mut_gcov.exe done (11:52)
+===============================================================================
+===============================================================================
+Running bin/mut_gcov.exe (11:52) ...
+===============================================================================
+Cleaning previous test output files...
+Cleanup complete.
+
+__STDC_VERSION__ = 199901
+[==========] Running 1 test(s).
+[ RUN      ] Test_LegacyRerFileRead_Success
+Sample count: 4060
+Lap count: 0
+[       OK ] Test_LegacyRerFileRead_Success
+[==========] 1 test(s) run.
+[  PASSED  ] 1 test(s).
+===============================================================================
+Analyzing code coverage bin/mut_gcov.exe (11:52) ...
+===============================================================================
+C:\devbin/mingw/mingw64/8.1.0/bin/gcov -o obj/gcov/mut/obj/gcov r1up_file.c. -b&
+obj/gcov/mut/obj/gcov.gcno:cannot open notes file
+===============================================================================
+Annotate gcov files ...
+===============================================================================
+C:\devbin/python/v2.7.1/python.exe build\UnitTestIt\annotate_gcov.py
+mv *.gcov reports/
+mv: cannot stat `*.gcov': No such file or directory
+make[1]: *** [annotate_gcov] Error 1
+make[1]: Leaving directory `C:/Users/AlexGiov/ag/atlas/race1up/research-development/active-projects/_shared-resources/software-libraries/r1up_file/trunk/src/test/unit'
+make: *** [gcov] Error 2]]></output>
+</report_data>
+</script>
+
+<script type="text/javascript">
+/* <![CDATA[ */
+
+var xmlParser = new DOMParser();
+var xmlRaw = document.getElementById("xmlData");
+var xmlData = xmlParser.parseFromString(xmlRaw.innerText, "text/xml").firstChild;
+var stateFilterResult = "all"; // all, passed, failed, not relevant
+var nbsp = String.fromCharCode(160);
+var notAvailable = "N.a.";
+
+var resultMap = {"passed":"Passed", "insufficient":"Insufficient coverage", "failed":"Failed", "failed_build":"Failed to build", "not_relevant":"Not relevant", "missing":"Missing", "invalid":"Invalid"}
+
+window.addEventListener("load", jsInit);
+
+// Select sub xml element by path
+function jsSelect(element, path)
+{
+	if (path.length == 0)
+	{
+		return element;
+	}
+
+	// select the element of path[0]
+	var child = null;
+	
+	var childNodes = element.childNodes;
+	var childNodesLen = childNodes.length;
+	for (var a=0; a<childNodesLen; a++)
+	{
+		if (childNodes[a].nodeName == path[0])
+		{
+			child = childNodes[a];
+			break;
+		}
+	}
+	
+	if (child == null)
+	{
+		return child;
+	}
+	else
+	{
+		path.shift();
+		return jsSelect(child, path);
+	}
+}
+
+function jsSelectText(element, path)
+{
+	// Assume that last element is an attribute
+	var attrib = null;
+	
+	if (path.length > 0)
+	{
+		attrib = path.pop();
+		if (attrib.startsWith("@"))
+		{
+			attrib = attrib.slice(1);
+		}
+		else
+		{
+			// Last element is not an attribute, re-add it to the array
+			path.push(attrib);
+			attrib = null;
+		}
+	}
+
+	// Find xml element	
+	var elSel = jsSelect(element, path);
+	
+	var ret = null;
+	if (attrib===null)
+	{
+		ret = elSel.textContent;
+	}
+	else
+	{
+		ret = elSel.getAttribute(attrib);
+	}
+
+	return ret;
+}
+
+
+// Apply xml content to dst id.
+function jsApplyText(element, id, text)
+{
+	var el_dst;
+	if (element === null)
+	{
+		elSel = document.getElementById(id);
+	}
+	else
+	{
+		elSel = element.querySelector("#"+id);
+	}
+
+	elSel.innerHTML = text;
+}
+
+
+// Apply xml content to dst id.
+// src: xml source element
+// path: path to sub-element
+// dst: id of destination html element
+// percent: Add % for valid numbers in case of true
+function jsApplySelect(srcEl, srcPath, dstEl, dstId)
+{
+	var text = jsSelectText(srcEl, srcPath);
+	jsApplyText(dstEl, dstId, text);
+	return text;
+}
+
+
+
+function jsApplyAttrib(srcEl, srcPath, srcAttrib, dstEl, dstId)
+{
+	var srcElSel = jsSelect(srcEl, srcPath);
+	
+	var el_dst;
+	if (dstEl === null)
+	{
+		dstElSel = document.getElementById(dstId);
+	}
+	else
+	{
+		dstElSel = dstEl.querySelector("#"+dstId);
+	}
+	dstElSel.innerHTML = srcElSel.getAttribute(srcAttrib);
+	return srcElSel.textContent;
+}
+
+
+function jsPercent(value)
+{
+	if (isNaN(value))
+	{
+		return value;
+	}
+	else
+	{
+		return value+"%";
+	}
+}
+
+// Init details for single unit test (dropdown)
+function jsInitDetails(detailsData, detailsHtml)
+{
+	var htmlDtlsContMetadataTable = detailsHtml.querySelector("#DtlsContMetadataTable");
+	var htmlDtlsTplMetadataRow = detailsHtml.querySelector("#DtlsTplMetadataRow");
+	
+	var htmlDtlsContMinCoverageC0 = detailsHtml.querySelector("#DtlsContMinCoverageC0");
+	var htmlDtlsContMinCoverageC1 = detailsHtml.querySelector("#DtlsContMinCoverageC1");
+	var htmlDtlsContMinCoverageC1P = detailsHtml.querySelector("#DtlsContMinCoverageC1P");
+	var htmlDtlsContMinCoverageJust = detailsHtml.querySelector("#DtlsContMinCoverageJust");
+
+	var htmlDtlsTplTestCase = detailsHtml.querySelector("#DtlsTplTestCase");
+	var htmlDtlsContTestCases = detailsHtml.querySelector("#DtlsContTestCases");
+
+	var htmlDtlsContFiles = detailsHtml.querySelector("#DtlsContFiles");
+	var htmlDtlsTplFile   = detailsHtml.querySelector("#DtlsTplFile");
+	
+	var supportedC0  = true;
+	var supportedC1  = true;
+	var supportedC1P = true;
+	
+	var x;
+	
+	for (var xmlDataChild=detailsData.firstChild; xmlDataChild!==null; xmlDataChild=xmlDataChild.nextSibling)
+	{
+		if (xmlDataChild.nodeName == "metadata")
+		{
+			for (var xmlMetadataEntry=xmlDataChild.firstChild; xmlMetadataEntry!==null; xmlMetadataEntry=xmlMetadataEntry.nextSibling)
+			{
+				if (xmlMetadataEntry.nodeName == "entry")
+				{
+					var htmlContMetadataRow = htmlDtlsTplMetadataRow.cloneNode(true);
+					htmlContMetadataRow.style.display = null;
+					htmlContMetadataRow.querySelector('#DtlsContMetadataName').innerText = xmlMetadataEntry.getAttribute("name");
+					htmlContMetadataRow.querySelector('#DtlsContMetadataValue').innerText = xmlMetadataEntry.textContent;
+					htmlDtlsContMetadataTable.appendChild(htmlContMetadataRow);
+				}
+			}
+		}
+		
+		if (xmlDataChild.nodeName == "min_coverage")
+		{
+			var minC0 = xmlDataChild.getAttribute("c0");
+			if ( isNaN(minC0) )
+			{
+				supportedC0 = false;
+			}
+			else
+			{
+				minC0 = minC0 + "%";
+			}
+			htmlDtlsContMinCoverageC0.innerText = minC0;
+
+			var minC1 = xmlDataChild.getAttribute("c1");
+			if ( isNaN(minC1) )
+			{
+				supportedC1 = false;
+			}
+			else
+			{
+				minC1 = minC1 + "%";
+			}
+			htmlDtlsContMinCoverageC1.innerText = minC1;
+
+			var minC1P = xmlDataChild.getAttribute("c1p");
+			if ( isNaN(minC1P) )
+			{
+				supportedC1P = false;
+			}
+			else
+			{
+				minC1P = minC1P + "%";
+			}
+			htmlDtlsContMinCoverageC1P.innerText = minC1P;
+
+			htmlDtlsContMinCoverageJust.innerText = xmlDataChild.textContent;
+		}
+		
+
+		if (xmlDataChild.nodeName == "summary")
+		{
+			var summaryResult = jsSelectText(xmlDataChild, ["result"]);
+
+			if (['failed_build','not_relevant','missing','invalid'].includes(summaryResult))
+			{
+				supportedC0 = false;
+				supportedC1 = false;
+				supportedC1P = false;
+			}
+		
+			jsApplyText(detailsHtml, "DtlsContSummaryResult", resultMap[summaryResult]);
+
+			jsApplySelect(xmlDataChild, ["testcases","@total"], detailsHtml, "DtlsContSummaryTcTotal");
+			jsApplySelect(xmlDataChild, ["testcases","@passed"], detailsHtml, "DtlsContSummaryTcPassed");
+			jsApplySelect(xmlDataChild, ["testcases","@failed"], detailsHtml, "DtlsContSummaryTcFailed");
+			
+			var xmlCoverage = jsSelect(xmlDataChild, ["coverage"])
+
+			if (supportedC0)
+			{
+				x = jsSelectText(xmlCoverage, ["@c0"])
+				if (x == "none")
+				{
+					x = notAvailable;
+				}
+				else
+				{
+					x = jsPercent(x) + ' (' + jsSelectText(xmlCoverage, ["@lines_exec"]) + '/' + jsSelectText(xmlCoverage, ["@lines_total"]) + ')';
+				}
+				jsApplyText(detailsHtml, "DtlsContSummaryCoverageC0", x);
+			}
+			else
+			{
+				detailsHtml.querySelector("#DtlsContSummaryCoverageTrC0").style.display = "none";
+			}
+
+			if (supportedC1)
+			{
+				x = jsSelectText(xmlCoverage, ["@c1"])
+				if (x == "none")
+				{
+					x = notAvailable;
+				}
+				else
+				{
+					x = jsPercent(x) + ' (' + jsSelectText(xmlCoverage, ["@branches_c1_exec"]) + '/' + jsSelectText(xmlCoverage, ["@branches_c1_total"]) + ')';
+				}
+				jsApplyText(detailsHtml, "DtlsContSummaryCoverageC1", x);
+			}
+			else
+			{
+				detailsHtml.querySelector("#DtlsContSummaryCoverageTrC1").style.display = "none";
+			}
+
+			if (supportedC1P)
+			{
+				x = jsSelectText(xmlCoverage, ["@c1p"])
+				if (x == "none")
+				{
+					x = notAvailable;
+				}
+				else
+				{
+					x = jsPercent(x) + ' (' + jsSelectText(xmlCoverage, ["@branches_c1p_exec"]) + '/' + jsSelectText(xmlCoverage, ["@branches_c1p_total"]) + ')';
+				}
+				jsApplyText(detailsHtml, "DtlsContSummaryCoverageC1P", x);
+			}
+			else
+			{
+				detailsHtml.querySelector("#DtlsContSummaryCoverageTrC1P").style.display = "none";
+			}
+		}
+
+		if (xmlDataChild.nodeName == "testcases")
+		{
+			for (var xmlTestcasesEntry=xmlDataChild.firstChild; xmlTestcasesEntry!==null; xmlTestcasesEntry=xmlTestcasesEntry.nextSibling)
+			{
+				if (xmlTestcasesEntry.nodeName == "testcase")
+				{
+					// Construct main entry for the testcases table
+					var htmlTestCase = htmlDtlsTplTestCase.cloneNode(true);
+					htmlTestCase.style.display = "table-row";
+					
+					jsApplySelect(xmlTestcasesEntry ,["@name"], htmlTestCase, "DtlsContTestCaseName");
+					jsApplyText(htmlTestCase, "DtlsContTestCaseResult", resultMap[jsSelectText(xmlTestcasesEntry ,["@result"])]);
+					
+					htmlDtlsContTestCases.appendChild(htmlTestCase);
+				}
+			}
+		}
+
+		if (xmlDataChild.nodeName == "files")
+		{
+			for (var xmlCoverageEntry=xmlDataChild.firstChild; xmlCoverageEntry!==null; xmlCoverageEntry=xmlCoverageEntry.nextSibling)
+			{
+				if (xmlCoverageEntry.nodeName == "file")
+				{
+				
+					var htmlFile = htmlDtlsTplFile.cloneNode(true);
+					htmlFile.style.display = "table-row";
+					
+					jsApplySelect(xmlCoverageEntry ,["@name"], htmlFile, "DtlsContFilename");
+					
+					if (supportedC0)
+					{
+						x = jsSelectText(xmlCoverageEntry, ["@c0"])
+						if (x == "none")
+						{
+							x = notAvailable;
+						}
+						else
+						{
+							x = jsPercent(x) + ' (' + jsSelectText(xmlCoverageEntry, ["@lines_exec"]) + '/' + jsSelectText(xmlCoverageEntry, ["@lines_total"]) + ')';
+						}
+						jsApplyText(htmlFile, "DtlsContFileC0", x);
+					}
+					else
+					{
+						htmlFile.querySelector("#DtlsContFileC0").style.display="none";
+						detailsHtml.querySelector("#DtlsContFileThC0").style.display="none";
+					}
+						
+					if (supportedC1)
+					{
+						x = jsSelectText(xmlCoverageEntry, ["@c1"])
+						if (x == "none")
+						{
+							x = notAvailable;
+						}
+						else
+						{
+							x = jsPercent(x) + ' (' + jsSelectText(xmlCoverageEntry, ["@branches_c1_exec"]) + '/' + jsSelectText(xmlCoverageEntry, ["@branches_c1_total"]) + ')';
+						}
+						jsApplyText(htmlFile, "DtlsContFileC1", x);
+					}
+					else
+					{
+						htmlFile.querySelector("#DtlsContFileC1").style.display="none";
+						detailsHtml.querySelector("#DtlsContFileThC1").style.display="none";
+					}
+						
+					if (supportedC1P)
+					{
+						x = jsSelectText(xmlCoverageEntry, ["@c1p"])
+						if (x == "none")
+						{
+							x = notAvailable;
+						}
+						else
+						{
+							x = jsPercent(x) + ' (' + jsSelectText(xmlCoverageEntry, ["@branches_c1p_exec"]) + '/' + jsSelectText(xmlCoverageEntry, ["@branches_c1p_total"]) + ')';
+						}
+						jsApplyText(htmlFile, "DtlsContFileC1P", x);
+					}
+					else
+					{
+						htmlFile.querySelector("#DtlsContFileC1P").style.display="none";
+						detailsHtml.querySelector("#DtlsContFileThC1P").style.display="none";
+					}
+				
+					htmlDtlsContFiles.appendChild(htmlFile);
+				}
+			}
+		}
+
+		if (xmlDataChild.nodeName == "output")
+		{
+			detailsHtml.querySelector("#DtlsContOutputTd").innerText = xmlDataChild.textContent;
+		}
+
+	}	
+
+}
+
+function jsInit(component)
+{
+	jsInitDetails(xmlData, document.getElementById("ContDetails"));
+}
+
+
+
+/* ]]> */
+</script>
+
+<div id="ContDetails">
+<h1 class="heading-1">Unit Test Report</h1>
+
+<h2 class="heading-1-1">Info</h2>
+<table id="DtlsContMetadataTable" class="polarion-wiki-table" style="border:none;">
+<tr id="DtlsTplMetadataRow" style="display:none;">
+<th id="DtlsContMetadataName" class="polarion-wiki-table-th">?</th>
+<td id="DtlsContMetadataValue" class="polarion-wiki-table-td">?</td>
+<td style="width:80%"> </td>
+</tr>
+</table>
+<br/>
+<table class="polarion-wiki-table">
+	<tr>
+		<th class="polarion-wiki-table-th" colspan="4">Minimum Coverage</th>
+	</tr>
+	<tr>
+		<th class="polarion-wiki-table-th">C0</th>
+		<th class="polarion-wiki-table-th">C1</th>
+		<th class="polarion-wiki-table-th">C1P</th>
+		<th class="polarion-wiki-table-th">Justification</th>
+	</tr>
+	<tr>
+		<td class="polarion-wiki-table-td" id="DtlsContMinCoverageC0">?</td>
+		<td class="polarion-wiki-table-td" id="DtlsContMinCoverageC1">?</td>
+		<td class="polarion-wiki-table-td" id="DtlsContMinCoverageC1P">?</td>
+		<td class="polarion-wiki-table-td" id="DtlsContMinCoverageJust">?</td>
+	</tr>
+</table>
+
+
+
+<h2 class="heading-1-1">Summary</h2>
+<table class="polarion-wiki-table" style="border:none;">
+	<tr><th class="polarion-wiki-table-th">Overall result</th><td id="DtlsContSummaryResult" class="polarion-wiki-table-td">?</td><td style="width:80%"> </td></tr>
+	<tr><th class="polarion-wiki-table-th">Testcases Total</th><td id="DtlsContSummaryTcTotal" class="polarion-wiki-table-td">?</td><td> </td></tr>
+	<tr><th class="polarion-wiki-table-th">Testcases Passed</th><td id="DtlsContSummaryTcPassed" class="polarion-wiki-table-td">?</td><td> </td></tr>
+	<tr><th class="polarion-wiki-table-th">Testcases Failed</th><td id="DtlsContSummaryTcFailed" class="polarion-wiki-table-td">?</td><td> </td></tr>
+	<tr id="DtlsContSummaryCoverageTrC0"><th class="polarion-wiki-table-th">Coverage C0</th><td class="polarion-wiki-table-td" id="DtlsContSummaryCoverageC0"/><td> </td></tr>
+	<tr id="DtlsContSummaryCoverageTrC1"><th class="polarion-wiki-table-th">Coverage C1</th><td class="polarion-wiki-table-td" id="DtlsContSummaryCoverageC1"/><td> </td></tr>
+	<tr id="DtlsContSummaryCoverageTrC1P"><th class="polarion-wiki-table-th">Coverage C1P</th><td class="polarion-wiki-table-td" id="DtlsContSummaryCoverageC1P"/><td> </td></tr>
+</table>
+
+<h2 class="heading-1-1">Test Cases</h2>
+<table id="DtlsContTestCases" class="polarion-wiki-table">
+	<tr>
+		<th class="polarion-wiki-table-th">Name</th>
+		<th class="polarion-wiki-table-th">Result</th>
+	</tr>
+	<tr id="DtlsTplTestCase" style="display:none;">
+		<td id="DtlsContTestCaseName" class="polarion-wiki-table-td">?</td>
+		<td id="DtlsContTestCaseResult" class="polarion-wiki-table-td">?</td>
+	</tr>
+</table>
+
+
+<h2 class="heading-1-1">Files</h2>
+<table id="DtlsContFiles" class="polarion-wiki-table">
+	<tr>
+		<th class="polarion-wiki-table-th">File Name</th>
+		<th class="polarion-wiki-table-th" id="DtlsContFileThC0">C0</th>
+		<th class="polarion-wiki-table-th" id="DtlsContFileThC1">C1</th>
+		<th class="polarion-wiki-table-th" id="DtlsContFileThC1P">C1P</th>
+	</tr>
+	<tr id="DtlsTplFile" style="display:none;">
+		<td id="DtlsContFilename" class="polarion-wiki-table-td">?</td>
+		<td class="polarion-wiki-table-td" id="DtlsContFileC0">?</td>
+		<td class="polarion-wiki-table-td" id="DtlsContFileC1">?</td>
+		<td class="polarion-wiki-table-td" id="DtlsContFileC1P">?</td>
+	</tr>
+</table>
+
+
+<h2 class="heading-1-1">Log</h2>
+<table id="DtlsContOutput" class="polarion-wiki-table">
+<tr><td class="polarion-wiki-table-td" id="DtlsContOutputTd">?</td></tr>
+</table>
+</div>
+
+
+</body>
+</html>

@@ -1,0 +1,25 @@
+MATLAB source bundle generated: 2026-11-14 18:28:27
+Source root: C:\Users\AlexGiov\ag\atlas\race1up\research-development\active-projects\_shared-resources\software-libraries\r1up_file\trunk\src\test\unit
+Destination root: C:\Users\AlexGiov\ag\atlas\race1up\research-development\active-projects\_shared-resources\software-libraries\r1up_file\trunk\src\test\unit\dist\r1up_file_matlab_src
+
+Layout:
+- include/ (SDK-like header layout)
+- src/     (C sources compiled for static library)
+
+C sources:
+- src/r1up_file.c
+- src/ag_fsal.c
+- src/ag_mal.c
+- src/ag_fixedpoint.c
+
+Headers:
+- include/r1up_file/r1up_file.h
+- include/r1up_file/r1up_file_variable_type_database.h
+- include/r1up_file/r1up_file_rr_file_variable_type_block_database.h
+- include/ag_fsal/ag_fsal.h
+- include/ag_mal/ag_mal.h
+- include/ag_fixedpoint/ag_fixedpoint.h
+- include/r1up_file_cfg.h
+- include/ag_fsal_cfg.h
+- include/ag_mal_cfg.h
+- include/ag_fixedpoint/ag_fixedpoint_cfg.h

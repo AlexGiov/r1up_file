@@ -1,0 +1,4 @@
+% Example MEX compile (adjust as needed). Run from the bundle folder; the MEX entry point is mexFunction in r1up_file.c:
+% mex -Iinclude src/r1up_file.c src/ag_fsal.c src/ag_mal.c src/ag_fixedpoint.c
+%
+% For a static lib workflow inside MATLAB toolchain, reuse the same sources and -Iinclude.
